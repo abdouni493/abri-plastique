@@ -133,8 +133,7 @@ BEGIN
     raw_app_meta_data,
     created_at,
     updated_at,
-    is_super_admin,
-    confirmed_at
+    is_super_admin
   ) VALUES (
     v_inst_id,
     gen_random_uuid(),
@@ -147,8 +146,7 @@ BEGIN
     '{"provider":"email","providers":["email"]}'::jsonb,
     NOW(),
     NOW(),
-    false,
-    NOW()
+    false
   )
   RETURNING id INTO v_auth_user_id;
 

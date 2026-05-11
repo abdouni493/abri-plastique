@@ -109,15 +109,12 @@ const mapDebt = (row: any): Debt => ({
 
 const mapAppointment = (row: any): Appointment => ({
   id: row.id,
+  entityId: row.entity_id,
+  entityType: row.entity_type,
   type: row.type,
   amount: row.amount,
-  notes: row.notes,
   date: row.date,
-  hour: row.hour,
-  client_id: row.client_id,
-  supplier_id: row.supplier_id,
-  status: row.status,
-  created_at: row.created_at,
+  notes: row.notes,
 });
 
 const mapCashDivision = (row: any): CashDivision => ({
@@ -597,14 +594,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addAppointment = async (a: Omit<Appointment, 'id'>) => {
     try {
       const { data } = await supabase.from('appointments').insert({
+        entity_id: a.entityId,
+        entity_type: a.entityType || 'client',
         type: a.type,
-        amount: a.amount,
+        amount: a.amount || null,
         date: a.date,
-        hour: a.hour,
         notes: a.notes || null,
-        client_id: a.client_id || null,
-        supplier_id: a.supplier_id || null,
-        status: a.status || 'pending',
       }).select().single();
       if (data) setAppointments(prev => [mapAppointment(data), ...prev]);
     } catch (err) {
@@ -617,10 +612,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const payload: any = {};
       if (a.amount !== undefined) payload.amount = a.amount;
       if (a.date !== undefined) payload.date = a.date;
-      if (a.hour !== undefined) payload.hour = a.hour;
       if (a.notes !== undefined) payload.notes = a.notes;
       if (a.type !== undefined) payload.type = a.type;
-      if (a.status !== undefined) payload.status = a.status;
       const { data } = await supabase.from('appointments').update(payload).eq('id', id).select().single();
       if (data) setAppointments(prev => prev.map(ap => ap.id === id ? mapAppointment(data) : ap));
     } catch (err) {
