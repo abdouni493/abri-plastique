@@ -1,0 +1,192 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,900;1,900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", serif;
+}
+
+:root {
+  /* Primary Gradient Colors */
+  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --gradient-success: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
+  --gradient-warning: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+  --gradient-danger: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  --gradient-light: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  --gradient-dark: linear-gradient(135deg, #2d3436 0%, #000000 100%);
+  --gradient-button: linear-gradient(135deg, #1e3a8a 0%, #64748b 100%);
+  
+  /* Accent Colors */
+  --indigo-50: #f5f3ff;
+  --indigo-100: #e0e7ff;
+  --indigo-400: #818cf8;
+  --indigo-500: #6366f1;
+  --indigo-600: #4f46e5;
+  --indigo-700: #4338ca;
+  --purple-600: #9333ea;
+  --cyan-500: #06b6d4;
+  --emerald-500: #10b981;
+}
+
+html[lang="ar"] {
+  font-family: "IBM Plex Sans Arabic", sans-serif;
+}
+
+/* Modern Global Styles */
+body {
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  min-height: 100vh;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
+}
+
+/* Smooth Transitions */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Button Styles with Gradients */
+button {
+  position: relative;
+  overflow: hidden;
+}
+
+button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  transition: left 0.3s ease;
+  z-index: -1;
+}
+
+button:hover::before {
+  left: 100%;
+}
+
+/* Gradient Text */
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Gradient Card */
+.gradient-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(245, 247, 250, 0.95) 100%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.1), 0 0 1px rgba(102, 126, 234, 0.2);
+}
+
+/* Gradient Hover Effect */
+.gradient-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gradient-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 48px rgba(102, 126, 234, 0.2);
+}
+
+/* Print Styles */
+@media print {
+  aside, header, .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .bg-white {
+    background-color: transparent !important;
+  }
+}
+
+/* Action Button Styles */
+.action-btn-info {
+  @apply p-2.5 rounded-xl text-gray-400 transition-all duration-300 hover:scale-110;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+}
+
+.action-btn-info:hover {
+  @apply text-indigo-600;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+}
+
+.action-btn-edit {
+  @apply p-2.5 rounded-xl text-gray-400 transition-all duration-300 hover:scale-110;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(96, 165, 250, 0.1) 100%);
+}
+
+.action-btn-edit:hover {
+  @apply text-blue-600;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+.action-btn-delete {
+  @apply p-2.5 rounded-xl text-gray-400 transition-all duration-300 hover:scale-110;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(244, 63, 94, 0.1) 100%);
+}
+
+.action-btn-delete:hover {
+  @apply text-red-600;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+.action-btn-print {
+  @apply p-2.5 rounded-xl text-gray-400 transition-all duration-300 hover:scale-110;
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.1) 0%, rgba(75, 85, 99, 0.1) 100%);
+}
+
+.action-btn-print:hover {
+  @apply text-gray-700;
+  box-shadow: 0 0 20px rgba(107, 114, 128, 0.3);
+}
+
+.action-btn-success {
+  @apply p-2.5 rounded-xl text-gray-400 transition-all duration-300 hover:scale-110;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);
+}
+
+.action-btn-success:hover {
+  @apply text-emerald-600;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+/* Button Gradient Styles */
+.btn-gradient-blue {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #64748b 100%);
+  @apply text-white font-bold;
+}
+
+.btn-gradient-blue:hover {
+  box-shadow: 0 0 30px rgba(30, 58, 138, 0.4);
+  @apply scale-105;
+}
+
+

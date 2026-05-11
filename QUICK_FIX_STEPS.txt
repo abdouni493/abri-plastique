@@ -1,0 +1,129 @@
+STEP 1: Verify RPC Function Exists in Supabase
+==============================================
+
+Go to Supabase Dashboard → SQL Editor → Paste this:
+
+SELECT routine_name FROM information_schema.routines 
+WHERE routine_name = 'create_worker_account' AND routine_schema = 'public';
+
+- If you see a result: Function EXISTS ✓
+- If no result: Function MISSING ✗ → Go to Step 2
+
+---
+
+STEP 2: Deploy the RPC Function (If Missing)
+============================================
+
+1. Open: FIX_CREATE_WORKER_ACCOUNT_RPC.sql
+2. Select ALL content
+3. Go to Supabase SQL Editor
+4. Paste the content
+5. Click "Execute"
+6. Wait for "Query executed successfully"
+7. Check Step 1 again to verify
+
+---
+
+STEP 3: Test the Function Works
+================================
+
+1. Go to Supabase SQL Editor
+2. Run this test query:
+
+SELECT public.create_worker_account(
+  p_email := 'admin@admin.com',
+  p_password := 'AdminTest123!',
+  p_name := 'Administrator',
+  p_username := 'admin',
+  p_phone := NULL,
+  p_role := 'admin'
+);
+
+Expected response:
+{
+  "success": true,
+  "user_id": "...",
+  "auth_user_id": "...",
+  "message": "Worker account created successfully"
+}
+
+If you see this: Function works ✓
+
+---
+
+STEP 4: Check What Was Created in Database
+============================================
+
+Run in SQL Editor:
+
+-- Check public.users
+SELECT * FROM public.users WHERE email = 'admin@admin.com';
+
+-- Check auth.users
+SELECT id, email FROM auth.users WHERE email = 'admin@admin.com';
+
+Both should have records and auth_user_id should be linked.
+
+---
+
+STEP 5: Test Login in Application
+==================================
+
+1. Go to Dashboard
+2. Logout
+3. Go to Login page
+4. Enter:
+   - Email: admin@admin.com
+   - Password: AdminTest123!
+5. Click Login
+
+Expected: Redirected to Dashboard ✓
+
+---
+
+STEP 6: If Login Still Fails
+=============================
+
+Check browser console (F12 → Console) for exact error message.
+
+Common errors:
+- "Invalid login credentials" → Wrong password
+- "Database error querying schema" → public.users record missing (RPC didn't work)
+- "404 not found" → RPC function doesn't exist (go back to Step 2)
+
+---
+
+STEP 7: Clean Up Test User (Optional)
+======================================
+
+If you created admin@admin.com for testing, clean it up:
+
+DELETE FROM public.user_permissions 
+WHERE user_id IN (SELECT id FROM public.users WHERE email = 'admin@admin.com');
+
+DELETE FROM public.users WHERE email = 'admin@admin.com';
+
+DELETE FROM auth.users WHERE email = 'admin@admin.com';
+
+---
+
+STEP 8: Create Real User Via Application
+==========================================
+
+1. Open Dashboard
+2. Go to Utilisateurs page
+3. Click "Nouveau Membre"
+4. Fill form:
+   - Nom Complet: Administrator
+   - Nom d'Utilisateur: admin
+   - Email: admin@admin.com
+   - Mot de Passe: AdminSecure123!
+   - Poste: admin
+5. Click "Créer l'utilisateur"
+
+Check browser console (F12 → Console):
+Should see: ✅ [Utilisateurs] User created successfully via RPC
+
+---
+
+DONE! User should be able to login now.
