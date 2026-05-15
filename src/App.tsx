@@ -74,27 +74,27 @@ export default function App() {
                 </ProtectedRoute>
               }>
                 <Route index element={<Dashboard />} />
-                <Route path="commercial/dashboard" element={<Empty title="Dashboard Commercial" description="Vue commerciale du tableau de bord" />} />
-                <Route path="caisse" element={<Caisse />} />
-                <Route path="banque" element={<Banque />} />
-                <Route path="transfert" element={<Transfert />} />
-                <Route path="ventes" element={<Ventes />} />
-                <Route path="achats" element={<Achats />} />
-                <Route path="clients" element={<Clients />} />
-                <Route path="fournisseurs" element={<Fournisseurs />} />
-                <Route path="depenses" element={<Depenses />} />
-                <Route path="utilisateurs" element={<Utilisateurs />} />
-                <Route path="rapports" element={<Rapports />} />
-                <Route path="parametres" element={<Parametres />} />
+                <Route path="caisse"            element={<ProtectedRoute permission="view_caisse"><Caisse /></ProtectedRoute>} />
+                <Route path="banque"            element={<ProtectedRoute permission="view_bank"><Banque /></ProtectedRoute>} />
+                <Route path="transfert"         element={<ProtectedRoute permission="view_transfer"><Transfert /></ProtectedRoute>} />
+                <Route path="ventes"            element={<ProtectedRoute permission="view_sales"><Ventes /></ProtectedRoute>} />
+                <Route path="achats"            element={<ProtectedRoute permission="view_purchases"><Achats /></ProtectedRoute>} />
+                <Route path="clients"           element={<ProtectedRoute permission="view_clients"><Clients /></ProtectedRoute>} />
+                <Route path="fournisseurs"      element={<ProtectedRoute permission="view_suppliers"><Fournisseurs /></ProtectedRoute>} />
+                <Route path="depenses"          element={<ProtectedRoute permission="view_expenses"><Depenses /></ProtectedRoute>} />
+                <Route path="utilisateurs"      element={<ProtectedRoute permission="view_users"><Utilisateurs /></ProtectedRoute>} />
+                <Route path="rapports"          element={<ProtectedRoute permission="view_reports"><Rapports /></ProtectedRoute>} />
+                <Route path="parametres"        element={<ProtectedRoute permission="view_settings"><Parametres /></ProtectedRoute>} />
+                
                 {/* Commercial Mode Pages */}
                 <Route path="commercial/dashboard" element={<Empty title="Dashboard Commercial" description="Vue commerciale du tableau de bord" />} />
-                <Route path="stockage" element={<Stockage />} />
-                <Route path="production" element={<Production />} />
-                <Route path="bon-commande" element={<BonCommande />} />
-                <Route path="bon-livraison" element={<BonLivraison />} />
-                <Route path="bon-reception" element={<BonReception />} />
-                <Route path="facture-proformat" element={<FactureProformat />} />
-                <Route path="inventaire" element={<Inventaire />} />
+                <Route path="stockage"          element={<ProtectedRoute permission="view_stockage"><Stockage /></ProtectedRoute>} />
+                <Route path="production"        element={<ProtectedRoute permission="view_production"><Production /></ProtectedRoute>} />
+                <Route path="bon-commande"      element={<ProtectedRoute permission="view_bon_commande"><BonCommande /></ProtectedRoute>} />
+                <Route path="bon-livraison"     element={<ProtectedRoute permission="view_bon_livraison"><BonLivraison /></ProtectedRoute>} />
+                <Route path="bon-reception"     element={<ProtectedRoute permission="view_bon_reception"><BonReception /></ProtectedRoute>} />
+                <Route path="facture-proformat" element={<ProtectedRoute permission="view_proformat"><FactureProformat /></ProtectedRoute>} />
+                <Route path="inventaire"        element={<ProtectedRoute permission="view_inventaire"><Inventaire /></ProtectedRoute>} />
               </Route>
             </Routes>
           </AppProvider>

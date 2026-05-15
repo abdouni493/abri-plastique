@@ -11,6 +11,7 @@ import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { uploadProductImage } from '../lib/storage';
 import JsBarcode from 'jsbarcode';
+import { useAuth } from '../context/AuthContext';
 
 interface Product {
   id: string;
@@ -64,6 +65,7 @@ const SOUS_FAMILLES = ['Ordinateurs', 'Périphériques', 'Câbles', 'Protections
 const MARKS = ['Dell', 'Logitech', 'Corsair', 'HP', 'ASUS', 'Apple'];
 
 const Stockage = () => {
+  const { hasPermission } = useAuth();
   const { isRTL } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const barcodeRef = useRef<SVGSVGElement>(null);
@@ -550,19 +552,21 @@ const Stockage = () => {
                 <Factory size={20} />
                 Produits Production
               </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  resetForm();
-                  setEditingId(null);
-                  setShowModal(true);
-                }}
-                className="btn-gradient-blue flex items-center gap-3 px-8 py-4 rounded-2xl text-white font-black shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all uppercase tracking-[0.2em] text-sm bg-gradient-to-br from-indigo-600 via-blue-600 to-slate-600"
-              >
-                <Plus size={22} />
-                Nouveau Produit
-              </motion.button>
+              {hasPermission('action_create') && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    resetForm();
+                    setEditingId(null);
+                    setShowModal(true);
+                  }}
+                  className="btn-gradient-blue flex items-center gap-3 px-8 py-4 rounded-2xl text-white font-black shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all uppercase tracking-[0.2em] text-sm bg-gradient-to-br from-indigo-600 via-blue-600 to-slate-600"
+                >
+                  <Plus size={22} />
+                  Nouveau Produit
+                </motion.button>
+              )}
             </div>
           </div>
         </div>
@@ -619,6 +623,7 @@ const Stockage = () => {
                     <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-start">Ref</th>
                     <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Quantité</th>
                     <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Prix</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Marge</th>
                     <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-end">Actions</th>
                   </tr>
                 </thead>
@@ -668,6 +673,22 @@ const Stockage = () => {
                         <span className="text-[10px] text-gray-400 font-semibold">Vente</span>
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-center whitespace-nowrap">
+                      {product.prixAchatHT > 0 ? (
+                        (() => {
+                          const value = ((product.prixVente - product.prixAchatHT) / product.prixAchatHT) * 100;
+                          const formatted = `${value.toFixed(1)}%`;
+                          const badgeColor = value > 20 ? 'bg-emerald-100 text-emerald-800' : value >= 10 ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-800';
+                          return (
+                            <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-[10px] font-black ${badgeColor}`}>
+                              {formatted}
+                            </span>
+                          );
+                        })()
+                      ) : (
+                        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-[10px] font-black bg-gray-100 text-gray-500">—</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-end whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         <button
@@ -677,20 +698,24 @@ const Stockage = () => {
                         >
                           <Info size={18} />
                         </button>
-                        <button
-                          onClick={() => handleEditProduct(product)}
-                          className="action-btn-edit"
-                          title="Modifier"
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduct(product.id)}
-                          className="action-btn-delete"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        {hasPermission('action_edit') && (
+                          <button
+                            onClick={() => handleEditProduct(product)}
+                            className="action-btn-edit"
+                            title="Modifier"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                        )}
+                        {hasPermission('action_delete') && (
+                          <button
+                            onClick={() => handleDeleteProduct(product.id)}
+                            className="action-btn-delete"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -928,6 +953,22 @@ const Stockage = () => {
                   </div>
                 </div>
 
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/80 rounded-2xl p-4 border border-emerald-200">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Marge</p>
+                  {formData.prixAchatHT && formData.prixAchatHT > 0 ? (
+                    (() => {
+                      const value = ((formData.prixVente || 0) - (formData.prixAchatHT || 0)) / formData.prixAchatHT * 100;
+                      const formatted = `${value.toFixed(1)}%`;
+                      const badgeColor = value > 20 ? 'bg-emerald-100 text-emerald-800' : value >= 10 ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-800';
+                      return (
+                        <span className={`inline-flex items-center justify-center px-3 py-2 rounded-full text-sm font-black ${badgeColor}`}>{formatted}</span>
+                      );
+                    })()
+                  ) : (
+                    <span className="inline-flex items-center justify-center px-3 py-2 rounded-full text-sm font-black bg-gray-100 text-gray-500">—</span>
+                  )}
+                </div>
+
                 <div className="flex flex-col md:flex-row gap-4 pt-4 shrink-0">
                   <button
                     type="button"
@@ -1073,20 +1114,37 @@ const Stockage = () => {
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Limite Prix Vente</p>
                       <p className="text-2xl font-black text-purple-600">{selectedProduct.limitePrixVente.toFixed(2)}DZD</p>
                     </div>
+                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/80 rounded-2xl p-4 border border-emerald-200">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Marge</p>
+                      {selectedProduct.prixAchatHT > 0 ? (
+                        (() => {
+                          const value = ((selectedProduct.prixVente - selectedProduct.prixAchatHT) / selectedProduct.prixAchatHT) * 100;
+                          const formatted = `${value.toFixed(1)}%`;
+                          const badgeColor = value > 20 ? 'bg-emerald-100 text-emerald-800' : value >= 10 ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-800';
+                          return (
+                            <span className={`inline-flex items-center justify-center px-3 py-2 rounded-full text-sm font-black ${badgeColor}`}>{formatted}</span>
+                          );
+                        })()
+                      ) : (
+                        <span className="inline-flex items-center justify-center px-3 py-2 rounded-full text-sm font-black bg-gray-100 text-gray-500">—</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-4 pt-8 border-t-2 border-indigo-100/30">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowDetails(false);
-                      handleEditProduct(selectedProduct);
-                    }}
-                    className="flex-1 bg-gradient-to-br from-indigo-600 via-blue-606 to-slate-606 text-white rounded-2xl py-4 px-8 font-black text-xs uppercase tracking-[0.2em] hover:shadow-2xl hover:shadow-indigo-500/40 active:scale-[0.98] transition-all shadow-xl"
-                  >
-                    Modifier
-                  </button>
+                  {hasPermission('action_edit') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDetails(false);
+                        handleEditProduct(selectedProduct);
+                      }}
+                      className="flex-1 bg-gradient-to-br from-indigo-600 via-blue-606 to-slate-606 text-white rounded-2xl py-4 px-8 font-black text-xs uppercase tracking-[0.2em] hover:shadow-2xl hover:shadow-indigo-500/40 active:scale-[0.98] transition-all shadow-xl"
+                    >
+                      Modifier
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setShowDetails(false)}

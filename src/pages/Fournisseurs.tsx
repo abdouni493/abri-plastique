@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import {
   Plus, Search, Edit, Trash2, Printer, Eye, X,
   Warehouse, TrendingUp, Calendar, Phone, Check,
@@ -623,6 +624,7 @@ const SupplierForm: React.FC<{
 // ─── Supplier History Modal ───────────────────────────────────────────────────
 
 function SupplierHistoryModal({ supplier, onClose }: { supplier: Supplier; onClose: () => void }) {
+  const { hasPermission, user: currentUser } = useAuth();
   const [achats, setAchats] = useState<any[]>([]);
   const [debts, setDebts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -637,7 +639,7 @@ function SupplierHistoryModal({ supplier, onClose }: { supplier: Supplier; onClo
     setLoading(true);
     const [achatsRes, debtsRes] = await Promise.all([
       supabase.from('achats').select('*').eq('supplier_id', supplier.id).order('date', { ascending: false }),
-      supabase.from('debts').select('*, debt_payments(*)').eq('supplier_id', supplier.id).order('date', { ascending: false }),
+      supabase.from('debts').select('*, debt_payments(*, creator:created_by(name))').eq('supplier_id', supplier.id).order('date', { ascending: false }),
     ]);
     if (achatsRes.data) setAchats(achatsRes.data);
     if (debtsRes.data) setDebts(debtsRes.data);
@@ -658,6 +660,7 @@ function SupplierHistoryModal({ supplier, onClose }: { supplier: Supplier; onClo
         payment_mode: 'especes',
         date: new Date().toISOString().split('T')[0],
         notes: payNote || undefined,
+        created_by: currentUser?.id,
       });
       await supabase.from('debts').update({
         paid_amount: payingDebt.paid_amount + amount,
@@ -736,32 +739,56 @@ function SupplierHistoryModal({ supplier, onClose }: { supplier: Supplier; onClo
               {debts.length > 0 && (
                 <div>
                   <h3 className="text-sm font-black text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2"><AlertCircle size={14} className="text-red-500" />Dettes</h3>
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     {debts.map(debt => {
                       const remaining = debt.total_amount - (debt.paid_amount || 0);
                       const isPaid = remaining <= 0;
+                      const payments = debt.debt_payments || [];
                       return (
-                        <div key={debt.id} className={`flex items-center justify-between px-4 py-3 rounded-xl border ${
+                        <div key={debt.id} className={`rounded-xl border overflow-hidden ${
                           isPaid ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'
                         }`}>
-                          <div>
-                            <p className="font-bold text-gray-900 text-sm">{debt.invoice_number || 'N/A'}</p>
-                            <p className="text-xs text-gray-500">{new Date(debt.date).toLocaleDateString('fr-DZ')} · Total: {fmt(debt.total_amount)}</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <p className={`font-black text-sm ${isPaid ? 'text-emerald-700' : 'text-red-700'}`}>
-                                {isPaid ? '✅ Soldé' : fmt(remaining)}
-                              </p>
-                              {!isPaid && <p className="text-xs text-gray-500">Payé: {fmt(debt.paid_amount || 0)}</p>}
+                          {/* Debt Summary */}
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <div>
+                              <p className="font-bold text-gray-900 text-sm">{debt.invoice_number || 'N/A'}</p>
+                              <p className="text-xs text-gray-500">{new Date(debt.date).toLocaleDateString('fr-DZ')} · Total: {fmt(debt.total_amount)}</p>
                             </div>
-                            {!isPaid && (
-                              <button onClick={() => { setPayingDebt(debt); setPayAmount(String(remaining)); }}
-                                className="px-3 py-1.5 bg-gradient-to-br from-orange-500 to-amber-600 text-white rounded-lg text-xs font-bold shadow hover:shadow-orange-400/40 transition-all">
-                                Payer
-                              </button>
-                            )}
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className={`font-black text-sm ${isPaid ? 'text-emerald-700' : 'text-red-700'}`}>
+                                  {isPaid ? '✅ Soldé' : fmt(remaining)}
+                                </p>
+                                {!isPaid && <p className="text-xs text-gray-500">Payé: {fmt(debt.paid_amount || 0)}</p>}
+                              </div>
+                              {hasPermission('action_pay_debts') && !isPaid && (
+                                <button onClick={() => { setPayingDebt(debt); setPayAmount(String(remaining)); }}
+                                  className="px-3 py-1.5 bg-gradient-to-br from-orange-500 to-amber-600 text-white rounded-lg text-xs font-bold shadow hover:shadow-orange-400/40 transition-all">
+                                  Payer
+                                </button>
+                              )}
+                            </div>
                           </div>
+
+                          {/* Payment History */}
+                          {payments.length > 0 && (
+                            <div className="border-t border-current opacity-10 px-4 py-2 bg-black/5">
+                              <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Historique des Paiements</p>
+                              <div className="space-y-1">
+                                {payments.map((payment: any, idx: number) => (
+                                  <div key={idx} className="text-xs flex justify-between items-center py-1.5 px-2 bg-white/40 rounded">
+                                    <span className="text-gray-700 font-semibold">{fmt(payment.amount)}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-gray-500 italic">{new Date(payment.date).toLocaleDateString('fr-DZ')}</span>
+                                      <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                        Par: {payment.creator?.name || 'Utilisateur inconnu'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -809,6 +836,7 @@ function SupplierHistoryModal({ supplier, onClose }: { supplier: Supplier; onClo
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function FournisseursPage() {
+  const { hasPermission } = useAuth();
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | undefined>();
@@ -860,15 +888,17 @@ export default function FournisseursPage() {
           </h1>
           <p className="text-gray-600 font-semibold mt-1">Gestion complète des fournisseurs et approvisionnements</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => { setEditingSupplier(undefined); setShowForm(true); }}
-          className="flex items-center justify-center gap-2 bg-gradient-to-br from-orange-600 via-amber-600 to-yellow-500 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-orange-500/40 transition-all w-full md:w-auto"
-        >
-          <Plus size={20} />
-          Nouveau Fournisseur
-        </motion.button>
+        {hasPermission('action_create') && (
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { setEditingSupplier(undefined); setShowForm(true); }}
+            className="flex items-center justify-center gap-2 bg-gradient-to-br from-orange-600 via-amber-600 to-yellow-500 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-orange-500/40 transition-all w-full md:w-auto"
+          >
+            <Plus size={20} />
+            Nouveau Fournisseur
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Stats Cards */}
@@ -1040,35 +1070,41 @@ export default function FournisseursPage() {
                         >
                           <Eye size={16} />
                         </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => { setEditingSupplier(supplier); setShowForm(true); }}
-                          className="p-2 text-amber-600 bg-amber-50 rounded-lg hover:bg-amber-100 transition-all"
-                          title="Modifier"
-                        >
-                          <Edit size={16} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => printSupplier(supplier)}
-                          className="p-2 text-orange-600 bg-orange-50 rounded-lg hover:bg-orange-100 transition-all"
-                          title="Imprimer"
-                        >
-                          <Printer size={16} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => {
-                            if (window.confirm('Êtes-vous sûr ?')) handleDelete(supplier.id);
-                          }}
-                          className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={16} />
-                        </motion.button>
+                         {hasPermission('action_edit') && (
+                           <motion.button
+                             whileHover={{ scale: 1.1 }}
+                             whileTap={{ scale: 0.95 }}
+                             onClick={() => { setEditingSupplier(supplier); setShowForm(true); }}
+                             className="p-2 text-amber-600 bg-amber-50 rounded-lg hover:bg-amber-100 transition-all"
+                             title="Modifier"
+                           >
+                             <Edit size={16} />
+                           </motion.button>
+                         )}
+                         {hasPermission('action_print') && (
+                           <motion.button
+                             whileHover={{ scale: 1.1 }}
+                             whileTap={{ scale: 0.95 }}
+                             onClick={() => printSupplier(supplier)}
+                             className="p-2 text-orange-600 bg-orange-50 rounded-lg hover:bg-orange-100 transition-all"
+                             title="Imprimer"
+                           >
+                             <Printer size={16} />
+                           </motion.button>
+                         )}
+                         {hasPermission('action_delete') && (
+                           <motion.button
+                             whileHover={{ scale: 1.1 }}
+                             whileTap={{ scale: 0.95 }}
+                             onClick={() => {
+                               if (window.confirm('Êtes-vous sûr ?')) handleDelete(supplier.id);
+                             }}
+                             className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
+                             title="Supprimer"
+                           >
+                             <Trash2 size={16} />
+                           </motion.button>
+                         )}
                       </div>
                     </td>
                   </motion.tr>

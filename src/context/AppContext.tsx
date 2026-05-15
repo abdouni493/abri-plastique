@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { 
   Transaction, Bank, Client, Supplier, Debt, 
-  Appointment, CashDivision, CompanySettings 
+  Appointment, CashDivision, CompanySettings, Timbre 
 } from '../types';
 
 // ── Helper: map Supabase snake_case → camelCase for Transaction ──
@@ -114,13 +114,26 @@ const mapAppointment = (row: any): Appointment => ({
   type: row.type,
   amount: row.amount,
   date: row.date,
+  hour: row.hour,
   notes: row.notes,
+  status: row.status,
+  client_id: row.entity_type === 'client' ? row.entity_id : undefined,
+  supplier_id: row.entity_type === 'supplier' ? row.entity_id : undefined,
 });
 
 const mapCashDivision = (row: any): CashDivision => ({
   id: row.id,
   name: row.name,
   percentage: row.percentage,
+});
+
+const mapTimbre = (row: any): Timbre => ({
+  id: row.id,
+  name: row.name,
+  minAmount: row.min_amount,
+  maxAmount: row.max_amount,
+  percentage: row.percentage,
+  isActive: row.is_active,
 });
 
 interface AppContextType {
@@ -131,6 +144,7 @@ interface AppContextType {
   debts: Debt[];
   appointments: Appointment[];
   divisions: CashDivision[];
+  timbres: Timbre[];
   categories: string[];
   settings: CompanySettings;
   loading: boolean;
@@ -153,6 +167,9 @@ interface AppContextType {
   deleteAppointment: (id: string) => Promise<void>;
   addDivision: (d: Omit<CashDivision, 'id'>) => Promise<void>;
   deleteDivision: (id: string) => Promise<void>;
+  addTimbre: (t: Omit<Timbre, 'id'>) => Promise<void>;
+  updateTimbre: (id: string, t: Partial<Timbre>) => Promise<void>;
+  deleteTimbre: (id: string) => Promise<void>;
   addCategory: (name: string) => Promise<void>;
   deleteCategory: (name: string) => Promise<void>;
   updateSettings: (s: Partial<CompanySettings>) => Promise<void>;
@@ -172,6 +189,10 @@ const defaultSettings: CompanySettings = {
   nif: '',
   rs: '',
   article: '',
+  activite: '',
+  rc: '',
+  nis: '',
+  email: '',
   validationThreshold: 100000,
   lowCashAlertThreshold: 50000,
 };
@@ -185,6 +206,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [debts, setDebts] = useState<Debt[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [divisions, setDivisions] = useState<CashDivision[]>([]);
+  const [timbres, setTimbres] = useState<Timbre[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [loading, setLoading] = useState(false); // Changed: only true when actually loading
@@ -210,15 +232,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ── Load all data (only when authenticated) ──
   const loadAll = useCallback(async () => {
-    // Don't load if not authenticated or already loading
+    // BUG 1 FIX: If we are 'loading' but arrays are empty, it might be a stuck state
+    if (loadingRef.current && transactions.length === 0 && banks.length === 0) {
+      console.warn('[App] Stuck loading state detected, resetting...');
+      loadingRef.current = false;
+    }
+
     if (!isAuthenticated || loadingRef.current) return;
     
-    loadingRef.current = true;
     try {
+      loadingRef.current = true;
       setLoading(true);
       // Wrap each query in try-catch to allow partial data loading
-      const run = async (q: any) => { try { const r = await q; return r; } catch { return { data: null }; } };
-      const [txRes, bankRes, clientRes, supplierRes, debtRes, apptRes, divRes, catRes] =
+      const run = async (q: any) => { 
+        const r = await q; 
+        if (r.error) {
+          console.error('Supabase Query Error:', r.error.message, r.error.details);
+          return { data: null, error: r.error };
+        }
+        return r; 
+      };
+      const [txRes, bankRes, clientRes, supplierRes, debtRes, apptRes, divRes, catRes, timbreRes] =
         await Promise.all([
           run(supabase.from('transactions').select('*').order('date', { ascending: false })),
           run(supabase.from('banks').select('*').order('name')),
@@ -228,6 +262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           run(supabase.from('appointments').select('*').order('date')),
           run(supabase.from('cash_divisions').select('*').order('id')),
           run(supabase.from('transaction_categories').select('name').order('name')),
+          run(supabase.from('timbres').select('*').order('min_amount')),
         ]);
 
       if (txRes.data) setTransactions(txRes.data.map(mapTransaction));
@@ -262,6 +297,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (apptRes.data) setAppointments(apptRes.data.map(mapAppointment));
       if (divRes.data) setDivisions(divRes.data.map(mapCashDivision));
       if (catRes.data) setCategories(catRes.data.map((c: any) => c.name));
+      if (timbreRes?.data) setTimbres(timbreRes.data.map(mapTimbre));
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -271,11 +307,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isAuthenticated]);
 
   // ── Load settings (can be public) ──
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (retryCount = 0) => {
     try {
-      const { data, error } = await supabase.from('company_settings').select('*').single();
+      const { data, error } = await supabase.from('company_settings').select('*').maybeSingle();
       if (error) {
-        console.warn('Could not load company settings (public access might be restricted):', error);
+        console.warn(`[Settings] Attempt ${retryCount + 1} failed:`, error.message);
+        if (retryCount < 2) {
+          setTimeout(() => loadSettings(retryCount + 1), 2000);
+        }
         return;
       }
       if (data) {
@@ -290,26 +329,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           nif: data.nif || '',
           rs: data.rs || '',
           article: data.article || '',
+          activite: data.activite || '',
+          rc: data.rc || '',
+          nis: data.nis || '',
+          email: data.email || '',
           validationThreshold: data.validation_threshold || 100000,
           lowCashAlertThreshold: data.low_cash_alert_threshold || 50000,
         });
       }
     } catch (err) {
       console.error('Error loading settings:', err);
+      if (retryCount < 2) {
+        setTimeout(() => loadSettings(retryCount + 1), 2000);
+      }
     }
   }, []);
 
-  // Load settings on mount
+  // Load settings on mount AND after authentication (in case RLS blocked it initially)
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadSettings();
+    }
+  }, [isAuthenticated, loadSettings]);
 
   // Load data after authentication is complete
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
       loadAll();
     }
-  }, [isAuthenticated, authLoading, loadAll]);
+  }, [isAuthenticated, authLoading]); // Remove loadAll from deps to avoid loop
+
+  const refreshBankBalance = async (bankId: string) => {
+    if (!bankId) return;
+    const { data } = await supabase.from('banks').select('id, balance').eq('id', bankId).single();
+    if (data) {
+      setBanks(prev => prev.map(b => b.id === bankId ? { ...b, balance: data.balance } : b));
+    }
+  };
 
   // ── TRANSACTIONS ──
   const addTransaction = async (t: Omit<Transaction, 'id'>) => {
@@ -331,7 +391,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: t.status,
         proof_url: t.proof || null,
       }).select().single();
-      if (data) setTransactions(prev => [mapTransaction(data), ...prev]);
+      if (data) {
+        setTransactions(prev => [mapTransaction(data), ...prev]);
+        if (t.source === 'bank' && t.bankId) {
+          refreshBankBalance(t.bankId);
+        }
+      }
     } catch (err) {
       console.error('Error adding transaction:', err);
     }
@@ -354,7 +419,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (t.proof !== undefined) payload.proof_url = t.proof || null;
 
       const { data } = await supabase.from('transactions').update(payload).eq('id', id).select().single();
-      if (data) setTransactions(prev => prev.map(tx => tx.id === id ? mapTransaction(data) : tx));
+      if (data) {
+        setTransactions(prev => prev.map(tx => tx.id === id ? mapTransaction(data) : tx));
+        if (t.source === 'bank' && t.bankId) {
+          refreshBankBalance(t.bankId);
+        }
+      }
     } catch (err) {
       console.error('Error updating transaction:', err);
     }
@@ -362,8 +432,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteTransaction = async (id: string) => {
     try {
+      const tx = transactions.find(t => t.id === id);
       await supabase.from('transactions').delete().eq('id', id);
       setTransactions(prev => prev.filter(tx => tx.id !== id));
+      if (tx?.source === 'bank' && tx.bankId) {
+        refreshBankBalance(tx.bankId);
+      }
     } catch (err) {
       console.error('Error deleting transaction:', err);
     }
@@ -594,12 +668,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addAppointment = async (a: Omit<Appointment, 'id'>) => {
     try {
       const { data } = await supabase.from('appointments').insert({
-        entity_id: a.entityId,
-        entity_type: a.entityType || 'client',
+        entity_id: a.entityId || a.client_id || a.supplier_id,
+        entity_type: a.entityType || (a.client_id ? 'client' : (a.supplier_id ? 'supplier' : 'client')),
         type: a.type,
         amount: a.amount || null,
         date: a.date,
+        hour: a.hour || null,
         notes: a.notes || null,
+        status: a.status || 'pending',
       }).select().single();
       if (data) setAppointments(prev => [mapAppointment(data), ...prev]);
     } catch (err) {
@@ -652,6 +728,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // ── TIMBRES ──
+  const addTimbre = async (t: Omit<Timbre, 'id'>) => {
+    try {
+      const { data } = await supabase.from('timbres').insert({
+        name: t.name,
+        min_amount: t.minAmount,
+        max_amount: t.maxAmount,
+        percentage: t.percentage,
+        is_active: t.isActive,
+      }).select().single();
+      if (data) setTimbres(prev => [mapTimbre(data), ...prev]);
+    } catch (err) {
+      console.error('Error adding timbre:', err);
+    }
+  };
+
+  const updateTimbre = async (id: string, t: Partial<Timbre>) => {
+    try {
+      const payload: any = {};
+      if (t.name !== undefined) payload.name = t.name;
+      if (t.minAmount !== undefined) payload.min_amount = t.minAmount;
+      if (t.maxAmount !== undefined) payload.max_amount = t.maxAmount;
+      if (t.percentage !== undefined) payload.percentage = t.percentage;
+      if (t.isActive !== undefined) payload.is_active = t.isActive;
+      
+      const { data } = await supabase.from('timbres').update(payload).eq('id', id).select().single();
+      if (data) setTimbres(prev => prev.map(tm => tm.id === id ? mapTimbre(data) : tm));
+    } catch (err) {
+      console.error('Error updating timbre:', err);
+    }
+  };
+
+  const deleteTimbre = async (id: string) => {
+    try {
+      await supabase.from('timbres').delete().eq('id', id);
+      setTimbres(prev => prev.filter(t => t.id !== id));
+    } catch (err) {
+      console.error('Error deleting timbre:', err);
+    }
+  };
+
   // ── CATEGORIES ──
   const addCategory = async (name: string) => {
     try {
@@ -685,6 +802,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (s.nif !== undefined) payload.nif = s.nif;
       if (s.rs !== undefined) payload.rs = s.rs;
       if (s.article !== undefined) payload.article = s.article;
+      if (s.activite !== undefined) payload.activite = s.activite;
+      if (s.rc !== undefined) payload.rc = s.rc;
+      if (s.nis !== undefined) payload.nis = s.nis;
+      if (s.email !== undefined) payload.email = s.email;
       if (s.validationThreshold !== undefined) payload.validation_threshold = s.validationThreshold;
       if (s.lowCashAlertThreshold !== undefined) payload.low_cash_alert_threshold = s.lowCashAlertThreshold;
 
@@ -729,6 +850,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         debts,
         appointments,
         divisions,
+        timbres,
         categories,
         settings,
         loading,
@@ -751,6 +873,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteAppointment,
         addDivision,
         deleteDivision,
+        addTimbre,
+        updateTimbre,
+        deleteTimbre,
         addCategory,
         deleteCategory,
         updateSettings,

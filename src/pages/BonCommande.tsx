@@ -6,11 +6,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Plus, Search, Filter, Edit, Trash2, Printer, Eye, X, FileText,
-  ChevronDown, Package, User, Building2, Check, AlertCircle, ShoppingCart, ArrowRight, Loader
+  ChevronDown, Package, User, Building2, Check, AlertCircle, ShoppingCart, ArrowRight, Loader, Receipt
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,17 +32,25 @@ interface Client {
   id: string;
   name: string;
   phone?: string;
+  email?: string;
   taxId?: string;
   wilaya?: string;
   commune?: string;
+  address?: string;
+  activite?: string;
 }
 
 interface Supplier {
   id: string;
   name: string;
   phone?: string;
+  email?: string;
   nif?: string;
+  nis?: string;
+  rc?: string;
+  article?: string;
   wilaya?: string;
+  address?: string;
 }
 
 interface BonLine {
@@ -52,6 +61,8 @@ interface BonLine {
   tva: number;
   totalHT: number;
   totalTTC: number;
+  nbreColis?: number;
+  colisage?: number;
 }
 
 interface BonCommande {
@@ -68,6 +79,8 @@ interface BonCommande {
   status: 'brouillon' | 'confirme' | 'livre' | 'annule';
   notes: string;
   paymentMode: 'especes' | 'virement' | 'cheque' | 'traite';
+  sourceType?: 'commande' | 'proformat'; // Track which source type was used
+  proformatId?: string; // Reference to proformat if converted from proformat
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -226,7 +239,10 @@ function EntitySearch({ entities, onSelect, placeholder, icon: Icon }: {
 // ─── Print Template ───────────────────────────────────────────────────────────
 
 function printBon(bon: BonCommande, title: string, subtitle: string, settings?: any) {
-  const win = window.open('', '_blank');
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  const win = iframe.contentWindow;
   if (!win) return;
 
   const entitySection = bon.supplier
@@ -240,6 +256,8 @@ function printBon(bon: BonCommande, title: string, subtitle: string, settings?: 
       <td class="center">${i + 1}</td>
       <td><strong>${l.product.designation}</strong><br><small>${l.product.refProduct}</small></td>
       <td class="center">${l.quantity} ${l.product.uniteMesure}</td>
+      ${l.nbreColis ? `<td class="center">${l.nbreColis}</td>` : '<td class="center">-</td>'}
+      ${l.colisage ? `<td class="center">${l.colisage}</td>` : '<td class="center">-</td>'}
       <td class="right">${new Intl.NumberFormat('fr-DZ').format(l.prixUnitHT)}</td>
       <td class="center">${l.tva}%</td>
       <td class="right"><strong>${new Intl.NumberFormat('fr-DZ').format(l.totalHT)}</strong></td>
@@ -313,8 +331,13 @@ function printBon(bon: BonCommande, title: string, subtitle: string, settings?: 
             <div class="company-details">
               <div><label>Adresse</label><span>${settings?.address || 'Alger, Algérie'}</span></div>
               <div><label>Contact</label><span>${settings?.phone || '0799047248'}</span></div>
-              ${settings?.nif || 'Numéro d\'Identification Fiscale' ? `<div><label>NIF</label><span>${settings?.nif || 'Numéro d\'Identification Fiscale'}</span></div>` : ''}
-              ${settings?.rip || '00000 00000 0000000000 00' ? `<div><label>RIP</label><span>${settings?.rip || '00000 00000 0000000000 00'}</span></div>` : ''}
+              ${settings?.email ? `<div><label>Email</label><span>${settings.email}</span></div>` : ''}
+              ${settings?.nif ? `<div><label>NIF</label><span>${settings.nif}</span></div>` : ''}
+              ${settings?.rc ? `<div><label>RC</label><span>${settings.rc}</span></div>` : ''}
+              ${settings?.nis ? `<div><label>NIS</label><span>${settings.nis}</span></div>` : ''}
+              ${settings?.article ? `<div><label>Article</label><span>${settings.article}</span></div>` : ''}
+              ${settings?.rip ? `<div><label>RIP</label><span>${settings.rip}</span></div>` : ''}
+              ${settings?.activite ? `<div><label>Activité</label><span>${settings.activite}</span></div>` : ''}
             </div>
           </div>
           <div class="doc-title">
@@ -342,6 +365,8 @@ function printBon(bon: BonCommande, title: string, subtitle: string, settings?: 
             <th class="center">#</th>
             <th>Désignation</th>
             <th class="center">Qté</th>
+            <th class="center">Nbre Colis</th>
+            <th class="center">Colisage</th>
             <th class="right">P.U HT</th>
             <th class="center">TVA</th>
             <th class="right">Total HT</th>
@@ -372,6 +397,221 @@ function printBon(bon: BonCommande, title: string, subtitle: string, settings?: 
     </html>
   `);
   win.document.close();
+  win.onafterprint = () => {
+    document.body.removeChild(iframe);
+    window.location.reload();
+  };
+  win.focus();
+  win.print();
+}
+
+// Print Bon de Livraison as Non-Comptabilisée Invoice
+// Print Bon de Livraison as Non-Comptabilisée Invoice
+function handlePrintFactureNC(bl: BonCommande) {
+  // Fetch company settings from Supabase
+  supabase.from('company_settings').select('*').maybeSingle().then(({ data: settings }) => {
+    // Format client info
+    const clientSection = bl.client ? `
+      <div class="party-box">
+        <label>CLIENT</label>
+        <div class="value" style="font-size: 13px; font-weight: 800; color: #1a1a2e;">${bl.client.name || 'N/A'}</div>
+        ${bl.client.address ? `<div class="value" style="font-size:10px;color:#555;margin-top:3px;">${bl.client.address}</div>` : ''}
+        ${bl.client.phone ? `<div class="value" style="font-size:10px;color:#555;margin-top:1px;">Tél: ${bl.client.phone}</div>` : ''}
+        ${bl.client.taxId ? `<div class="value" style="font-size:10px;color:#555;margin-top:1px;">NIF: ${bl.client.taxId}</div>` : ''}
+        ${bl.client.wilaya ? `<div class="value" style="font-size:10px;color:#555;margin-top:1px;">${bl.client.wilaya}${bl.client.commune ? ' - ' + bl.client.commune : ''}</div>` : ''}
+      </div>
+    ` : '';
+
+    // Format lines
+    const lines = bl.lines.map((l: BonLine, i: number) => `
+      <tr>
+        <td class="center">${i + 1}</td>
+        <td><strong>${l.product?.designation || 'N/A'}</strong></td>
+        <td class="center">${l.quantity || 0}</td>
+        <td class="right">${new Intl.NumberFormat('fr-DZ').format(l.prixUnitHT || 0)}</td>
+        <td class="center">${l.tva || 19}%</td>
+        <td class="right"><strong>${new Intl.NumberFormat('fr-DZ').format(l.totalHT || 0)}</strong></td>
+        <td class="right"><strong>${new Intl.NumberFormat('fr-DZ').format(l.totalTTC || 0)}</strong></td>
+      </tr>
+    `).join('');
+
+    const htmlTemplate = `
+      <!DOCTYPE html>
+      <html dir="ltr" lang="fr">
+      <head>
+        <meta charset="utf-8">
+        <title>FACTURE NON COMPTABILISÉE - ${bl.numero}</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700;900&display=swap');
+          
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          
+          @page { size: A4; margin: 10mm; }
+          
+          @media print {
+            body { margin: 0; padding: 0; }
+            .no-print { display: none; }
+          }
+          
+          body { font-family: 'Inter', sans-serif; font-size: 12px; background: #fff; color: #1a1a1a; line-height: 1.5; }
+          
+          .receipt-container { max-width: 900px; margin: 0 auto; background: #fff; padding: 18px; position: relative; }
+          
+          .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 72px; font-weight: 900; color: rgba(220, 38, 38, 0.1); opacity: 0.3; pointer-events: none; z-index: 0; white-space: nowrap; }
+          
+          .company-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #dc2626; padding-bottom: 12px; margin-bottom: 15px; gap: 15px; position: relative; z-index: 1; }
+          .company-logo { width: 60px; height: 60px; background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 900; font-size: 20px; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.2); flex-shrink: 0; overflow: hidden; }
+          .company-logo img { width: 100%; height: 100%; object-fit: contain; }
+          .company-info { flex: 1; }
+          .company-name { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 900; color: #1a1a1a; margin-bottom: 4px; }
+          .company-details { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 10px; color: #666; }
+          .company-details div { display: flex; flex-direction: column; gap: 1px; }
+          .company-details label { font-weight: 600; text-transform: uppercase; font-size: 8px; color: #999; letter-spacing: 0.3px; }
+          .company-details span { font-weight: 500; color: #333; font-size: 10px; }
+          
+          .document-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 8px; border-left: 3px solid #dc2626; position: relative; z-index: 1; }
+          .document-title h1 { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 900; color: #dc2626; text-transform: uppercase; letter-spacing: 1px; }
+          .document-title p { font-size: 10px; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+          .doc-ref { text-align: right; }
+          .doc-ref .label { font-size: 8px; font-weight: 700; color: #999; }
+          .doc-ref .value { font-size: 11px; font-weight: 700; color: #dc2626; }
+          
+          .parties-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; position: relative; z-index: 1; }
+          .party-box { padding: 10px; background: #f9fafb; border-radius: 8px; border: 1px solid #fee2e2; border-left: 3px solid #dc2626; }
+          .party-box label { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #991b1b; }
+          .party-box .value { font-size: 11px; font-weight: 600; color: #1a1a1a; margin-top: 3px; }
+          
+          table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 11px; position: relative; z-index: 1; }
+          thead tr { background: linear-gradient(135deg, #dc2626, #991b1b); color: white; }
+          th { padding: 8px; text-align: left; font-weight: 700; }
+          td { padding: 7px; border-bottom: 1px solid #f0f0f0; }
+          .right { text-align: right; }
+          .center { text-align: center; }
+          
+          .totals-section { display: flex; justify-content: flex-end; margin-bottom: 15px; position: relative; z-index: 1; }
+          .totals-box { background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); color: #fff; padding: 12px 16px; min-width: 250px; border-radius: 8px; }
+          .totals-box .row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px; }
+          .totals-box .total-row { border-top: 1.5px solid rgba(255,255,255,0.3); padding-top: 8px; margin-top: 8px; font-weight: 900; font-size: 13px; }
+          
+          .notes-section { padding: 10px; background: #fee2e2; border-left: 3px solid #dc2626; border-radius: 6px; margin-bottom: 15px; font-size: 11px; position: relative; z-index: 1; }
+          .notes-section label { font-weight: 700; }
+          
+          .non-comptabilisee-notice { background: #fca5a5; color: #7f1d1d; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 10px; font-weight: 700; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; position: relative; z-index: 1; }
+          
+          .signature-section { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 15px; padding-top: 12px; border-top: 1.5px solid #e5e7eb; position: relative; z-index: 1; }
+          .signature-box { text-align: center; }
+          .signature-space { min-height: 40px; border-bottom: 1.5px solid #1a1a1a; margin-bottom: 3px; }
+          .signature-label { font-size: 8px; font-weight: 600; color: #666; text-transform: uppercase; }
+          
+          .footer-section { margin-top: 12px; padding-top: 8px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 8px; color: #999; position: relative; z-index: 1; }
+        </style>
+      </head>
+      <body>
+        <div class="watermark">NON COMPTABILISÉE</div>
+        <div class="receipt-container">
+          <div class="company-header">
+            <div class="company-logo">
+              ${settings?.logo ? `<img src="${settings.logo}">` : 'NC'}
+            </div>
+            <div class="company-info">
+              <div class="company-name">${settings?.name || 'ABRI PLASTIQUE'}</div>
+              <div class="company-details">
+                <div><label>Adresse</label><span>${settings?.address || 'Alger, Algérie'}</span></div>
+                <div><label>Contact</label><span>${settings?.phone || '0799047248'}</span></div>
+                ${settings?.email ? `<div><label>Email</label><span>${settings.email}</span></div>` : ''}
+                ${settings?.nif ? `<div><label>NIF</label><span>${settings.nif}</span></div>` : ''}
+                ${settings?.rc ? `<div><label>RC</label><span>${settings.rc}</span></div>` : ''}
+                ${settings?.nis ? `<div><label>NIS</label><span>${settings.nis}</span></div>` : ''}
+                ${settings?.article ? `<div><label>Article</label><span>${settings.article}</span></div>` : ''}
+                ${settings?.activite ? `<div><label>Activité</label><span>${settings.activite}</span></div>` : ''}
+              </div>
+            </div>
+          </div>
+          
+          <div class="non-comptabilisee-notice">⚠ FACTURE NON COMPTABILISÉE ⚠</div>
+          
+          <div class="document-header">
+            <div class="document-title">
+              <h1>Facture Non Comptabilisée</h1>
+              <p>Document Provisoire</p>
+            </div>
+            <div class="doc-ref">
+              <div class="label">Numéro:</div>
+              <div class="value">${bl.numero}</div>
+              <div class="label" style="margin-top: 4px;">Date:</div>
+              <div class="value">${bl.date}</div>
+            </div>
+          </div>
+          
+          <div class="parties-section">
+            <div class="party-box">
+              <label>Fournisseur / Vendeur</label>
+              <div class="value" style="font-weight: 700;">${settings?.name || 'ABRI PLASTIQUE'}</div>
+              <div class="value" style="font-size: 9px; color: #666; margin-top: 2px;">${settings?.address || 'Alger, Algérie'}</div>
+            </div>
+            ${clientSection || '<div class="party-box"><label>Client</label><div class="value">Non spécifié</div></div>'}
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th class="center">#</th>
+                <th>Désignation</th>
+                <th class="center">Quantité</th>
+                <th class="right">P.U HT</th>
+                <th class="center">TVA</th>
+                <th class="right">Total HT</th>
+                <th class="right">Total TTC</th>
+              </tr>
+            </thead>
+            <tbody>${lines}</tbody>
+          </table>
+          
+          <div class="totals-section">
+            <div class="totals-box">
+              <div class="row"><span>Total HT:</span><span>${new Intl.NumberFormat('fr-DZ').format(bl.totalHT || 0)} DA</span></div>
+              <div class="row"><span>Total TVA:</span><span>${new Intl.NumberFormat('fr-DZ').format(bl.totalTVA || 0)} DA</span></div>
+              <div class="row total-row"><span>TOTAL TTC:</span><span>${new Intl.NumberFormat('fr-DZ').format(bl.totalTTC || 0)} DA</span></div>
+            </div>
+          </div>
+          
+          ${bl.notes ? `<div class="notes-section"><label>Remarques:</label> ${bl.notes}</div>` : ''}
+          
+          <div class="signature-section">
+            <div class="signature-box">
+              <div class="signature-space"></div>
+              <div class="signature-label">Responsable Livraison</div>
+            </div>
+            <div class="signature-box">
+              <div class="signature-space"></div>
+              <div class="signature-label">Cachet Entreprise</div>
+            </div>
+            <div class="signature-box">
+              <div class="signature-space"></div>
+              <div class="signature-label">Client</div>
+            </div>
+          </div>
+          
+          <div class="footer-section">Document imprimé le ${new Date().toLocaleDateString('fr-DZ')} - Facture Non Comptabilisée</div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    iframe.contentWindow?.document.write(htmlTemplate);
+    iframe.contentWindow?.document.close();
+    
+    iframe.contentWindow?.addEventListener('afterprint', () => {
+      document.body.removeChild(iframe);
+      window.location.reload();
+    });
+    
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+  });
 }
 
 // ─── Source Bon Search Component ──────────────────────────────────────────────
@@ -381,7 +621,7 @@ function SourceBonSearch({ type, clients, suppliers, products, onSelect, placeho
   clients: Client[];
   suppliers: Supplier[];
   products: Product[];
-  onSelect: (bon: BonCommande) => void;
+  onSelect: (bon: BonCommande, sourceType: 'commande' | 'proformat') => void;
   placeholder: string;
 }) {
   const [query, setQuery] = useState('');
@@ -390,15 +630,25 @@ function SourceBonSearch({ type, clients, suppliers, products, onSelect, placeho
   const [allBons, setAllBons] = useState<BonCommande[]>([]);
   const [loadingBons, setLoadingBons] = useState(false);
 
-  // Both Livraison and Réception are converted from a Bon de Commande
-  const sourceType = 'commande';
+  // For Livraison: allow choosing between Commande and Proformat
+  // For Réception: only Commande
+  const [sourceType, setSourceType] = useState<'commande' | 'proformat'>(
+    type === 'livraison' ? 'proformat' : 'commande'
+  );
 
   useEffect(() => {
     const loadSourceBons = async () => {
       setLoadingBons(true);
       try {
-        const sourceTable = 'bons_commande';
-        const linesTable = 'bon_commande_lines';
+        let sourceTable = 'bons_commande';
+        let linesTable = 'bon_commande_lines';
+        let idField = 'bc_id';
+
+        if (sourceType === 'proformat') {
+          sourceTable = 'factures_proformat';
+          linesTable = 'facture_proformat_lines';
+          idField = 'fp_id';
+        }
 
         const { data, error } = await supabase
           .from(sourceTable)
@@ -427,6 +677,8 @@ function SourceBonSearch({ type, clients, suppliers, products, onSelect, placeho
               tva: l.tva || 19,
               totalHT: l.total_ht || 0,
               totalTTC: l.total_ttc || 0,
+              nbreColis: l.nbre_colis || 0,
+              colisage: l.colisage || 0,
             })),
             totalHT: bon.total_ht || 0,
             totalTVA: bon.total_tva || 0,
@@ -460,6 +712,23 @@ function SourceBonSearch({ type, clients, suppliers, products, onSelect, placeho
 
   return (
     <div ref={ref} className="relative">
+      {/* Show source type selector only for Livraison */}
+      {type === 'livraison' && (
+        <div className="mb-3 flex gap-3">
+          
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="sourceType"
+              value="proformat"
+              checked={sourceType === 'proformat'}
+              onChange={() => setSourceType('proformat')}
+              className="w-4 h-4 accent-emerald-600"
+            />
+            <span className="text-sm font-semibold text-gray-700">Depuis Facture Proformat</span>
+          </label>
+        </div>
+      )}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400" size={16} />
         <input
@@ -481,7 +750,7 @@ function SourceBonSearch({ type, clients, suppliers, products, onSelect, placeho
             {results.map(b => (
               <button
                 key={b.id}
-                onClick={() => { onSelect(b); setQuery(''); setOpen(false); }}
+                onClick={() => { onSelect(b, sourceType); setQuery(''); setOpen(false); }}
                 className="w-full text-left px-4 py-3 hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50 transition-all border-b border-gray-50 last:border-0 flex items-center gap-3"
               >
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center flex-shrink-0">
@@ -573,10 +842,10 @@ const BonForm: React.FC<{
   const [selectedSourceBon, setSelectedSourceBon] = useState<BonCommande | null>(null);
 
   // Handle source bon selection (auto-populate form)
-  const handleSourceBonSelect = (sourceBon: BonCommande) => {
+  const handleSourceBonSelect = (sourceBon: BonCommande, srcType: 'commande' | 'proformat') => {
     setSelectedSourceBon(sourceBon);
     
-    const newForm = {
+    const newForm: BonCommande = {
       ...form,
       numero: genTempNumero(PREFIX_MAP[type]),
       date: new Date().toISOString().split('T')[0],
@@ -590,6 +859,8 @@ const BonForm: React.FC<{
       status: 'brouillon',
       notes: sourceBon.notes || '',
       paymentMode: sourceBon.paymentMode || 'virement',
+      sourceType: srcType,
+      proformatId: srcType === 'proformat' ? sourceBon.id : undefined,
     };
     
     setForm(newForm);
@@ -829,6 +1100,8 @@ const BonForm: React.FC<{
                     <tr className="bg-gradient-to-r from-indigo-50/80 to-purple-50/50 border-b border-indigo-100">
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Désignation</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Quantité</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">Nbre Colis</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">Colisage</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">P.U HT</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">TVA %</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">Total TTC</th>
@@ -849,6 +1122,24 @@ const BonForm: React.FC<{
                             value={line.quantity}
                             onChange={e => updateLine(line.id, 'quantity', Number(e.target.value))}
                             className="w-full text-center bg-white border border-indigo-200 rounded-lg py-1.5 px-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            value={line.nbreColis || ''}
+                            onChange={e => updateLine(line.id, 'nbreColis', Number(e.target.value) || 0)}
+                            className="w-full text-center bg-white border border-indigo-200 rounded-lg py-1.5 px-2 text-xs font-bold focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            value={line.colisage || ''}
+                            onChange={e => updateLine(line.id, 'colisage', Number(e.target.value) || 0)}
+                            className="w-full text-center bg-white border border-indigo-200 rounded-lg py-1.5 px-2 text-xs font-bold focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -1016,6 +1307,8 @@ const ViewModal: React.FC<{ bon: BonCommande; onClose: () => void; type: string;
                   <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">#</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Désignation</th>
                   <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Qté</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">N° Colis</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Colisage</th>
                   <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">P.U HT</th>
                   <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">TVA</th>
                   <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Total TTC</th>
@@ -1030,6 +1323,8 @@ const ViewModal: React.FC<{ bon: BonCommande; onClose: () => void; type: string;
                       <p className="text-xs text-gray-400">{line.product.refProduct}</p>
                     </td>
                     <td className="px-4 py-3 text-center font-bold">{line.quantity} {line.product.uniteMesure}</td>
+                    <td className="px-4 py-3 text-center text-sm text-gray-600">{line.nbreColis || '-'}</td>
+                    <td className="px-4 py-3 text-center text-sm text-gray-600">{line.colisage || '-'}</td>
                     <td className="px-4 py-3 text-right font-bold">{formatAmount(line.prixUnitHT)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold">{line.tva}%</span>
@@ -1076,6 +1371,15 @@ const ViewModal: React.FC<{ bon: BonCommande; onClose: () => void; type: string;
               >
                 <ArrowRight size={16} />
                 {type === 'commande' ? 'Convertir en BL' : 'Convertir en BR'}
+              </button>
+            )}
+            {type === 'livraison' && (
+              <button
+                onClick={() => handlePrintFactureNC(bon)}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-br from-amber-500 via-orange-500 to-rose-600 text-white font-bold text-sm shadow-lg hover:shadow-orange-500/40 hover:shadow-xl transition-all"
+              >
+                <FileText size={16} />
+                Facture NC
               </button>
             )}
             <button
@@ -1134,6 +1438,7 @@ const SHADOW_MAP: Record<string, string> = {
 };
 
 function CommercialDocList({ type }: CommercialDocListProps) {
+  const { hasPermission } = useAuth();
   const { settings } = useApp();
   const [bons, setBons] = useState<BonCommande[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -1245,6 +1550,8 @@ function CommercialDocList({ type }: CommercialDocListProps) {
     tva: l.tva || 19,
     totalHT: l.total_ht || 0,
     totalTTC: l.total_ttc || 0,
+    nbreColis: l.nbre_colis || 0,
+    colisage: l.colisage || 0,
   });
 
   const mapBon = (b: any, lines: BonLine[], clientMap?: Map<string, Client>, supplierMap?: Map<string, Supplier>): BonCommande => ({
@@ -1361,6 +1668,10 @@ function CommercialDocList({ type }: CommercialDocListProps) {
         bonData.payment_mode = bon.paymentMode;
       } else if (type === 'livraison') {
         bonData.client_id = bon.client?.id || null;
+        // Add proformat_id if this BL was converted from a proformat
+        if (bon.proformatId) {
+          bonData.proformat_id = bon.proformatId;
+        }
       } else if (type === 'reception') {
         bonData.supplier_id = bon.supplier?.id || null;
       } else if (type === 'proformat') {
@@ -1404,6 +1715,8 @@ function CommercialDocList({ type }: CommercialDocListProps) {
           designation: line.product.designation || 'Article',
           prix_unit_ht: line.prixUnitHT,
           tva: line.tva,
+          nbre_colis: line.nbreColis || 0,
+          colisage: line.colisage || 0,
         };
         
         // Use quantity_recv for reception, quantity for others
@@ -1551,15 +1864,17 @@ function CommercialDocList({ type }: CommercialDocListProps) {
           </h1>
           <p className="text-gray-600 font-semibold mt-1">{SUBTITLE_MAP[type]}</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => { setEditingBon(undefined); setConversionSource(undefined); setShowForm(true); }}
-          className={`flex items-center justify-center gap-2 bg-gradient-to-br ${gradient} text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl ${shadow} transition-all w-full md:w-auto`}
-        >
-          <Plus size={20} />
-          Nouveau {type === 'proformat' ? 'Facture' : 'Bon'}
-        </motion.button>
+        {hasPermission('action_create') && (
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { setEditingBon(undefined); setConversionSource(undefined); setShowForm(true); }}
+            className={`flex items-center justify-center gap-2 bg-gradient-to-br ${gradient} text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl ${shadow} transition-all w-full md:w-auto`}
+          >
+            <Plus size={20} />
+            Nouveau {type === 'proformat' ? 'Facture' : 'Bon'}
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Stats Cards */}
@@ -1670,27 +1985,42 @@ function CommercialDocList({ type }: CommercialDocListProps) {
                         >
                           <Eye size={18} />
                         </button>
-                        <button
-                          onClick={() => { setEditingBon(bon); setConversionSource(undefined); setShowForm(true); }}
-                          className="action-btn-edit"
-                          title="Modifier"
-                        >
-                          <Edit size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(bon.id)}
-                          className="action-btn-delete"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                        <button
-                          onClick={() => printBon(bon, TITLE_MAP[type], TITLE_MAP[type].toUpperCase(), settings)}
-                          className="action-btn-print"
-                          title="Imprimer"
-                        >
-                          <Printer size={18} />
-                        </button>
+                        {hasPermission('action_edit') && (
+                          <button
+                            onClick={() => { setEditingBon(bon); setConversionSource(undefined); setShowForm(true); }}
+                            className="action-btn-edit"
+                            title="Modifier"
+                          >
+                            <Edit size={18} />
+                          </button>
+                        )}
+                        {hasPermission('action_delete') && (
+                          <button
+                            onClick={() => handleDelete(bon.id)}
+                            className="action-btn-delete"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                        {hasPermission('action_print') && (
+                          <button
+                            onClick={() => printBon(bon, TITLE_MAP[type], TITLE_MAP[type].toUpperCase(), settings)}
+                            className="action-btn-print"
+                            title="Imprimer"
+                          >
+                            <Printer size={18} />
+                          </button>
+                        )}
+                        {type === 'livraison' && (
+                          <button
+                            onClick={() => handlePrintFactureNC(bon)}
+                            className="p-2 text-orange-600 bg-orange-50 rounded-lg hover:bg-orange-100 transition-all border border-orange-200 shadow-sm"
+                            title="Imprimer Facture Non Comptabilisée"
+                          >
+                            <Receipt size={18} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

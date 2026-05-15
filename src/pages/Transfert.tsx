@@ -13,9 +13,11 @@ import { supabase } from '../lib/supabase';
 import { useLanguage } from '../context/LanguageContext';
 import { useApp } from '../context/AppContext';
 import { formatAmount, cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 
 const Transfert = () => {
+  const { hasPermission } = useAuth();
   const { t, isRTL } = useLanguage();
   const { transactions, banks, addTransaction, updateTransaction, deleteTransaction, loading, settings } = useApp();
   
@@ -559,15 +561,17 @@ const Transfert = () => {
           </h1>
           <p className="text-gray-600 font-semibold mt-1">Mouvements de fonds internes entre caisse et comptes bancaires</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setShowModal(true)}
-          className="flex items-center justify-center gap-2 bg-gradient-to-br from-indigo-600 via-blue-600 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-indigo-500/40 transition-all w-full md:w-auto"
-        >
-          <Plus size={20} />
-          Nouveau Transfert
-        </motion.button>
+        {hasPermission('action_create') && (
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowModal(true)}
+            className="flex items-center justify-center gap-2 bg-gradient-to-br from-indigo-600 via-blue-600 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-indigo-500/40 transition-all w-full md:w-auto"
+          >
+            <Plus size={20} />
+            Nouveau Transfert
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Info Cards */}
@@ -674,44 +678,50 @@ const Transfert = () => {
                        >
                           <Info size={16} />
                        </motion.button>
-                       <motion.button
-                         whileHover={{ scale: 1.1 }}
-                         whileTap={{ scale: 0.95 }}
-                         onClick={() => handleEdit(item)}
-                         className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all"
-                         title="Modifier"
-                       >
-                          <Edit size={16} />
-                       </motion.button>
-                       <motion.button
-                         whileHover={{ scale: 1.1 }}
-                         whileTap={{ scale: 0.95 }}
-                         onClick={() => {
-                           if(window.confirm('Confirmer la suppression ?')) {
-                             const paired = transactions.find(t => 
-                               t.id !== item.id &&
-                               t.category === 'Transfert Interne' &&
-                               t.amount === item.amount &&
-                               t.date === item.date
-                             );
-                             deleteTransaction(item.id);
-                             if (paired) deleteTransaction(paired.id);
-                           }
-                         }}
-                         className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
-                         title="Supprimer"
-                       >
-                          <Trash2 size={16} />
-                       </motion.button>
-                       <motion.button
-                         whileHover={{ scale: 1.1 }}
-                         whileTap={{ scale: 0.95 }}
-                         onClick={() => handlePrint(item)}
-                         className="p-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all"
-                         title="Imprimer"
-                       >
-                          <Printer size={16} />
-                       </motion.button>
+                       {hasPermission('action_edit') && (
+                         <motion.button
+                           whileHover={{ scale: 1.1 }}
+                           whileTap={{ scale: 0.95 }}
+                           onClick={() => handleEdit(item)}
+                           className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all"
+                           title="Modifier"
+                         >
+                            <Edit size={16} />
+                         </motion.button>
+                       )}
+                       {hasPermission('action_delete') && (
+                         <motion.button
+                           whileHover={{ scale: 1.1 }}
+                           whileTap={{ scale: 0.95 }}
+                           onClick={() => {
+                             if(window.confirm('Confirmer la suppression ?')) {
+                               const paired = transactions.find(t => 
+                                 t.id !== item.id &&
+                                 t.category === 'Transfert Interne' &&
+                                 t.amount === item.amount &&
+                                 t.date === item.date
+                               );
+                               deleteTransaction(item.id);
+                               if (paired) deleteTransaction(paired.id);
+                             }
+                           }}
+                           className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
+                           title="Supprimer"
+                         >
+                            <Trash2 size={16} />
+                         </motion.button>
+                       )}
+                       {hasPermission('action_print') && (
+                         <motion.button
+                           whileHover={{ scale: 1.1 }}
+                           whileTap={{ scale: 0.95 }}
+                           onClick={() => handlePrint(item)}
+                           className="p-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all"
+                           title="Imprimer"
+                         >
+                            <Printer size={16} />
+                         </motion.button>
+                       )}
                     </div>
                   </td>
                 </motion.tr>

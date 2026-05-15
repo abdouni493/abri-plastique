@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, Wallet, Landmark, ArrowLeftRight, 
@@ -23,7 +23,26 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean, toggle: () => void }) =>
   const { user, logout, hasPermission } = useAuth();
   const { settings } = useApp();
   const location = useLocation();
-  const [mode, setMode] = useState<'caisse' | 'commercial'>('caisse');
+  const [mode, setMode] = useState<'caisse' | 'commercial'>(() => {
+    return (localStorage.getItem('sidebar_mode') as 'caisse' | 'commercial') || 'caisse';
+  });
+
+  const handleModeChange = (newMode: 'caisse' | 'commercial') => {
+    setMode(newMode);
+    localStorage.setItem('sidebar_mode', newMode);
+  };
+
+  // Sync mode with current path
+  useEffect(() => {
+    const commercialPaths = [
+      '/commercial/dashboard', '/stockage', '/production', 
+      '/bon-commande', '/bon-livraison', '/bon-reception', 
+      '/facture-proformat', '/inventaire'
+    ];
+    if (commercialPaths.includes(location.pathname)) {
+      handleModeChange('commercial');
+    }
+  }, [location.pathname]);
 
   const caisseMenuItems = [
     { path: '/', icon: LayoutDashboard, label: t('dashboard'), permission: 'view_dashboard' },
@@ -41,23 +60,43 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean, toggle: () => void }) =>
   ];
 
   const commercialMenuItems = [
-    { path: '/commercial/dashboard', icon: LayoutDashboard, label: 'Dashboard Commercial', permission: 'view_dashboard' },
-    { path: '/stockage', icon: Package, label: 'Stockage', permission: 'view_dashboard' },
-    { path: '/production', icon: Wrench, label: 'Production', permission: 'view_dashboard' },
-    { path: '/achats', icon: ShoppingCart, label: t('purchases'), permission: 'view_purchases' },
-    { path: '/ventes', icon: ShoppingBag, label: t('sales'), permission: 'view_sales' },
-    { path: '/fournisseurs', icon: Truck, label: t('suppliers'), permission: 'view_suppliers' },
-    { path: '/clients', icon: Users, label: t('clients'), permission: 'view_clients' },
-    { path: '/bon-commande', icon: Clipboard, label: 'Bon de Commande', permission: 'view_dashboard' },
-    { path: '/bon-livraison', icon: FileCheck, label: 'Bon de Livraison', permission: 'view_dashboard' },
-    { path: '/bon-reception', icon: File, label: 'Bon de Réception', permission: 'view_dashboard' },
-    { path: '/facture-proformat', icon: FileText, label: 'Facture Proformat', permission: 'view_dashboard' },
-    { path: '/utilisateurs', icon: UserCircle, label: t('users'), permission: 'view_users' },
-    { path: '/depenses', icon: Receipt, label: t('expenses'), permission: 'view_expenses' },
-    { path: '/inventaire', icon: Package, label: 'Inventaire', permission: 'view_dashboard' },
-    { path: '/rapports', icon: FileText, label: t('reports'), permission: 'view_reports' },
-    { path: '/parametres', icon: Settings, label: t('settings'), permission: 'view_settings' },
+    { path: '/commercial/dashboard', icon: LayoutDashboard, label: 'Dashboard',         permission: 'view_dashboard' },
+    { path: '/stockage',             icon: Package,         label: 'Stockage',           permission: 'view_stockage' },
+    { path: '/production',           icon: Wrench,          label: 'Production',         permission: 'view_production' },
+    { path: '/achats',               icon: ShoppingCart,    label: 'Achats',             permission: 'view_purchases' },
+    { path: '/ventes',               icon: ShoppingBag,     label: 'Ventes',             permission: 'view_sales' },
+    { path: '/clients',              icon: Users,           label: 'Clients',            permission: 'view_clients' },
+    { path: '/fournisseurs',         icon: Truck,           label: 'Fournisseurs',       permission: 'view_suppliers' },
+    { path: '/bon-commande',         icon: Clipboard,       label: 'Bon de Commande',    permission: 'view_bon_commande' },
+    { path: '/bon-livraison',        icon: FileCheck,       label: 'Bon de Livraison',   permission: 'view_bon_livraison' },
+    { path: '/bon-reception',        icon: File,            label: 'Bon de Réception',   permission: 'view_bon_reception' },
+    { path: '/facture-proformat',    icon: FileText,        label: 'Facture Proformat',  permission: 'view_proformat' },
+    { path: '/inventaire',           icon: Package,         label: 'Inventaire',         permission: 'view_inventaire' },
+    { path: '/utilisateurs',         icon: UserCircle,      label: 'Utilisateurs',       permission: 'view_users' },
+    { path: '/depenses',             icon: Receipt,         label: 'Dépenses',           permission: 'view_expenses' },
+    { path: '/rapports',             icon: FileText,        label: 'Rapports',           permission: 'view_reports' },
+    { path: '/parametres',           icon: Settings,        label: 'Paramètres',         permission: 'view_settings' },
   ];
+
+  const canAccessCaisse = user?.role === 'admin' || [
+    'view_dashboard','view_caisse','view_bank','view_transfer','view_sales',
+    'view_purchases','view_clients','view_suppliers','view_expenses',
+    'view_users','view_reports','view_settings'
+  ].some(p => hasPermission(p));
+
+  const canAccessCommercial = user?.role === 'admin' || [
+    'view_stockage','view_production','view_bon_commande','view_bon_livraison',
+    'view_bon_reception','view_proformat','view_inventaire'
+  ].some(p => hasPermission(p));
+
+  // Auto-select mode if only one is available
+  useEffect(() => {
+    if (!canAccessCaisse && canAccessCommercial) {
+      handleModeChange('commercial');
+    } else if (canAccessCaisse && !canAccessCommercial) {
+      handleModeChange('caisse');
+    }
+  }, [canAccessCaisse, canAccessCommercial]);
 
   const menuItems = mode === 'caisse' ? caisseMenuItems : commercialMenuItems;
   const filteredItems = menuItems.filter(item => hasPermission(item.permission));
@@ -94,16 +133,20 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean, toggle: () => void }) =>
           <div className="h-24 flex items-center px-8 shrink-0 bg-white/50 backdrop-blur-md">
             <div className="w-14 h-14 rounded-[1.25rem] flex items-center justify-center shrink-0 shadow-[0_8px_20px_rgba(79,70,229,0.15)] overflow-hidden border-2 border-white bg-white">
               {settings.logo ? (
-                <img src={settings.logo} alt="Logo" className="w-full h-full object-contain" />
+                <img src={settings.logo} alt="Logo" className="w-full h-full object-contain" onError={(e) => e.currentTarget.style.display='none'} />
               ) : (
                 <div className="w-full h-full bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-800 flex items-center justify-center">
-                  <span className="text-white font-black text-2xl">{settings.name?.[0] || 'E'}</span>
+                  <span className="text-white font-black text-2xl">{settings.name?.[0] || '?'}</span>
                 </div>
               )}
             </div>
             <div className="ms-4 overflow-hidden">
               <h1 className="text-xl font-black text-slate-900 truncate tracking-tight leading-none">
-                {settings.name || 'ABRI PLASTIQUE'}
+                {settings.name && settings.name !== 'Entreprise' ? (
+                  settings.name
+                ) : (
+                  <span className="text-slate-400 italic font-medium animate-pulse">Chargement...</span>
+                )}
               </h1>
               <div className="flex items-center gap-1.5 mt-1.5">
                 <div className="relative flex items-center">
@@ -131,33 +174,34 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean, toggle: () => void }) =>
             </div>
           </div>
 
-          {/* Mode Switcher */}
-          <div className="px-6 py-2 shrink-0">
-            <div className="bg-slate-100/50 p-1 rounded-[1.25rem] flex gap-1 w-full border border-slate-200/40">
-              <button
-                onClick={() => setMode('caisse')}
-                className={cn(
-                  "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300",
-                  mode === 'caisse'
-                    ? "bg-white text-indigo-600 shadow-[0_4px_12px_rgba(0,0,0,0.05)] border border-slate-200/50 scale-[1.02]"
-                    : "text-slate-400 hover:text-slate-600 hover:bg-white/40"
-                )}
-              >
-                Caisse
-              </button>
-              <button
-                onClick={() => setMode('commercial')}
-                className={cn(
-                  "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300",
-                  mode === 'commercial'
-                    ? "bg-white text-indigo-600 shadow-[0_4px_12px_rgba(0,0,0,0.05)] border border-slate-200/50 scale-[1.02]"
-                    : "text-slate-400 hover:text-slate-600 hover:bg-white/40"
-                )}
-              >
-                Commercial
-              </button>
+          {(canAccessCaisse && canAccessCommercial) && (
+            <div className="px-6 py-2 shrink-0">
+              <div className="bg-slate-100/50 p-1 rounded-[1.25rem] flex gap-1 w-full border border-slate-200/40">
+                <button
+                  onClick={() => handleModeChange('caisse')}
+                  className={cn(
+                    "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300",
+                    mode === 'caisse'
+                      ? "bg-white text-indigo-600 shadow-[0_4px_12px_rgba(0,0,0,0.05)] border border-slate-200/50 scale-[1.02]"
+                      : "text-slate-400 hover:text-slate-600 hover:bg-white/40"
+                  )}
+                >
+                  Caisse
+                </button>
+                <button
+                  onClick={() => handleModeChange('commercial')}
+                  className={cn(
+                    "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300",
+                    mode === 'commercial'
+                      ? "bg-white text-indigo-600 shadow-[0_4px_12px_rgba(0,0,0,0.05)] border border-slate-200/50 scale-[1.02]"
+                      : "text-slate-400 hover:text-slate-600 hover:bg-white/40"
+                  )}
+                >
+                  Commercial
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Navigation Items */}
           <nav className="flex-1 overflow-y-auto py-6 px-6 space-y-1.5 custom-scrollbar">

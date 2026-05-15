@@ -75,6 +75,9 @@ export interface Client {
   dateCreated?: string;
   totalPurchases?: number;
   notes?: string;
+  documents?: string[];
+  isSpecial?: boolean;
+  specialNote?: string;
 }
 
 export interface Supplier {
@@ -126,14 +129,16 @@ export interface Debt {
 
 export interface Appointment {
   id: string;
+  entityId?: string;
+  entityType?: string;
   type: 'verser' | 'percevoir';
-  amount: number;
+  amount?: number;
   notes?: string;
   date: string;
-  hour: string;
+  hour?: string;
   client_id?: string;
   supplier_id?: string;
-  status: 'pending' | 'completed' | 'cancelled';
+  status?: 'pending' | 'completed' | 'cancelled';
   created_at?: string;
 }
 
@@ -141,6 +146,15 @@ export interface CashDivision {
   id: string;
   name: string;
   percentage: number;
+}
+
+export interface Timbre {
+  id: string;
+  name: string;
+  minAmount: number;
+  maxAmount: number;
+  percentage: number;
+  isActive: boolean;
 }
 
 export interface CompanySettings {
@@ -154,6 +168,10 @@ export interface CompanySettings {
   nif?: string;
   rs?: string;
   article?: string;
+  activite?: string;
+  rc?: string;
+  nis?: string;
+  email?: string;
   validationThreshold: number;
   lowCashAlertThreshold: number;
 }

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -889,6 +890,7 @@ function InventaireForm({ inv, onClose, onSave, storageProducts }: { inv?: Inven
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const InventairePage: React.FC = () => {
+  const { hasPermission } = useAuth();
   const [inventaires, setInventaires] = useState<Inventaire[]>([]);
   const [storageProducts, setStorageProducts] = useState<StorageProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1045,11 +1047,13 @@ const InventairePage: React.FC = () => {
           </h1>
           <p className="text-gray-600 font-semibold mt-1">Gestion et contrôle des stocks · Analyses des écarts</p>
         </div>
-        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-          onClick={() => { setEditingInv(undefined); setShowForm(true); }}
-          className="flex items-center justify-center gap-2 bg-gradient-to-br from-sky-600 via-cyan-600 to-teal-600 text-white px-8 py-3.5 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-sky-500/40 transition-all w-full md:w-auto">
-          <Plus size={20} /> Nouvel Inventaire
-        </motion.button>
+        {hasPermission('action_create') && (
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+            onClick={() => { setEditingInv(undefined); setShowForm(true); }}
+            className="flex items-center justify-center gap-2 bg-gradient-to-br from-sky-600 via-cyan-600 to-teal-600 text-white px-8 py-3.5 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-sky-500/40 transition-all w-full md:w-auto">
+            <Plus size={20} /> Nouvel Inventaire
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Stats */}
@@ -1191,27 +1195,35 @@ const InventairePage: React.FC = () => {
                           <Eye size={16} />
                         </motion.button>
                         {/* Edit */}
-                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-                          onClick={() => { setEditingInv(inv); setShowForm(true); }} className="action-btn-edit" title="Modifier">
-                          <Edit size={16} />
-                        </motion.button>
+                        {hasPermission('action_edit') && (
+                          <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
+                            onClick={() => { setEditingInv(inv); setShowForm(true); }} className="action-btn-edit" title="Modifier">
+                            <Edit size={16} />
+                          </motion.button>
+                        )}
                         {/* Compare */}
-                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-                          onClick={() => handleCompare(inv)}
-                          className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-50 to-teal-50 border border-cyan-200 text-cyan-600 hover:from-cyan-100 hover:to-teal-100 hover:border-cyan-400 transition-all flex items-center justify-center"
-                          title="Analyser les écarts (changera le statut à Validé)">
-                          <GitCompare size={15} />
-                        </motion.button>
+                        {hasPermission('action_edit') && (
+                          <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
+                            onClick={() => handleCompare(inv)}
+                            className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-50 to-teal-50 border border-cyan-200 text-cyan-600 hover:from-cyan-100 hover:to-teal-100 hover:border-cyan-400 transition-all flex items-center justify-center"
+                            title="Analyser les écarts (changera le statut à Validé)">
+                            <GitCompare size={15} />
+                          </motion.button>
+                        )}
                         {/* Print */}
-                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-                          onClick={() => printInventaire(inv)} className="action-btn-print" title="Imprimer">
-                          <Printer size={16} />
-                        </motion.button>
+                        {hasPermission('action_print') && (
+                          <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
+                            onClick={() => printInventaire(inv)} className="action-btn-print" title="Imprimer">
+                            <Printer size={16} />
+                          </motion.button>
+                        )}
                         {/* Delete */}
-                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-                          onClick={() => handleDelete(inv.id)} className="action-btn-delete" title="Supprimer">
-                          <Trash2 size={16} />
-                        </motion.button>
+                        {hasPermission('action_delete') && (
+                          <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
+                            onClick={() => handleDelete(inv.id)} className="action-btn-delete" title="Supprimer">
+                            <Trash2 size={16} />
+                          </motion.button>
+                        )}
                       </div>
                     </td>
                   </motion.tr>

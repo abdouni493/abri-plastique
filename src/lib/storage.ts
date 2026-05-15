@@ -184,3 +184,39 @@ export const deleteStorageFile = async (url: string): Promise<void> => {
     console.error('Error deleting storage file:', err);
   }
 };
+
+/**
+ * Upload client document to Supabase Storage
+ * @param clientId - Client ID
+ * @param file - File to upload
+ * @returns Public URL of uploaded file or null on error
+ */
+export const uploadClientDocument = async (clientId: string, file: File): Promise<string | null> => {
+  try {
+    const extension = getFileExtension(file.name);
+    const path = `${clientId}/${Date.now()}-${file.name}`;
+
+    // Check file size (5MB limit for documents)
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_SIZE) {
+      console.error('Error uploading document: File size exceeds 5MB limit');
+      return null;
+    }
+
+    const { error } = await supabase.storage
+      .from('client-documents')
+      .upload(path, file);
+
+    if (error) {
+      console.error('Error uploading document:', error);
+      return null;
+    }
+
+    const { data } = supabase.storage.from('client-documents').getPublicUrl(path);
+
+    return data.publicUrl;
+  } catch (err) {
+    console.error('Error uploading document:', err);
+    return null;
+  }
+};

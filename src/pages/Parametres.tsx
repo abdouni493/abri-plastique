@@ -8,7 +8,7 @@ import {
   Settings, User, Landmark, LayoutGrid, 
   Shield, Database, Save, Upload, 
   Trash2, Plus, X, Image as ImageIcon, 
-  Lock, Bell, AlertTriangle, Download, PieChart
+  Lock, Bell, AlertTriangle, Download, PieChart, Stamp, Edit2
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -24,7 +24,8 @@ const Parametres = () => {
   const { 
     banks, addBank, deleteBank, settings, updateSettings, 
     categories, addCategory, deleteCategory,
-    divisions, addDivision, deleteDivision, transactions, loading
+    divisions, addDivision, deleteDivision, transactions, loading,
+    timbres, addTimbre, updateTimbre, deleteTimbre
   } = useApp();
 
   if (loading) return (
@@ -36,6 +37,8 @@ const Parametres = () => {
   const [activeTab, setActiveTab] = useState('general');
   const [newBank, setNewBank] = useState({ name: '', code: '' });
   const [newDivision, setNewDivision] = useState({ name: '', percentage: '' });
+  const [newTimbre, setNewTimbre] = useState({ name: '', minAmount: '', maxAmount: '', percentage: '', isActive: true });
+  const [editingTimbreId, setEditingTimbreId] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -56,6 +59,10 @@ const Parametres = () => {
         nif: settings.nif || '',
         rs: settings.rs || '',
         article: settings.article || '',
+        activite: settings.activite || '',
+        rc: settings.rc || '',
+        nis: settings.nis || '',
+        email: settings.email || '',
         validationThreshold: settings.validationThreshold ?? 100000,
         lowCashAlertThreshold: settings.lowCashAlertThreshold ?? 50000,
       });
@@ -132,6 +139,7 @@ const Parametres = () => {
     { id: 'profile', label: 'Profil Utilisateur', icon: User },
     { id: 'general', label: 'Entreprise & Général', icon: Landmark },
     { id: 'cash', label: 'Gestion des Caisses', icon: PieChart },
+    { id: 'timbres', label: 'Timbres (Taxe)', icon: Stamp },
     { id: 'resources', label: 'Ressources (Banques/Cat.)', icon: LayoutGrid },
     { id: 'security', label: 'Sécurité & Alertes', icon: Shield },
     { id: 'data', label: 'Données & Sauvegarde', icon: Database },
@@ -285,6 +293,28 @@ const Parametres = () => {
                             className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
                           />
                         </div>
+                        <div>
+                          <label className="text-xs font-bold text-gray-700 mb-2 block">Activité</label>
+                          <input 
+                            type="text" 
+                            value={localSettings.activite || ''} 
+                            onChange={(e) => setLocalSettings({ ...localSettings, activite: e.target.value })}
+                            onBlur={() => updateSettings({ activite: localSettings.activite })}
+                            placeholder="Secteur d'activité"
+                            className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-gray-700 mb-2 block">Email</label>
+                          <input 
+                            type="email" 
+                            value={localSettings.email || ''} 
+                            onChange={(e) => setLocalSettings({ ...localSettings, email: e.target.value })}
+                            onBlur={() => updateSettings({ email: localSettings.email })}
+                            placeholder="adresse@exemple.com"
+                            className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                          />
+                        </div>
                       </div>
                    </div>
 
@@ -334,6 +364,39 @@ const Parametres = () => {
                           onBlur={() => updateSettings({ nif: localSettings.nif })}
                           placeholder="Numéro d'Identification Fiscale"
                           className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-2 block">RC (Registre de Commerce)</label>
+                        <input 
+                          type="text" 
+                          value={localSettings.rc || ''}
+                          onChange={(e) => setLocalSettings({ ...localSettings, rc: e.target.value })}
+                          onBlur={() => updateSettings({ rc: localSettings.rc })}
+                          placeholder="Numéro du Registre de Commerce"
+                          className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-2 block">NIS (Numéro Identification Statistique)</label>
+                        <input 
+                          type="text" 
+                          value={localSettings.nis || ''}
+                          onChange={(e) => setLocalSettings({ ...localSettings, nis: e.target.value })}
+                          onBlur={() => updateSettings({ nis: localSettings.nis })}
+                          placeholder="Numéro d'Identification Statistique"
+                          className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-2 block">Article (N° d'Article)</label>
+                        <input
+                          type="text"
+                          value={localSettings.article || ''}
+                          onChange={(e) => setLocalSettings({ ...localSettings, article: e.target.value })}
+                          onBlur={() => updateSettings({ article: localSettings.article })}
+                          placeholder="Numéro d'article fiscal"
+                          className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                         />
                       </div>
                    </div>
@@ -490,6 +553,209 @@ const Parametres = () => {
                    >
                      Mettre à jour
                    </motion.button>
+                </div>
+             </div>
+           )}
+
+           {activeTab === 'timbres' && (
+             <div className="space-y-10 animate-in fade-in duration-300">
+                <div className="flex items-center justify-between pb-8 border-b border-indigo-100/30">
+                   <div>
+                      <h4 className="text-xl font-bold text-gray-900 mb-1">Gestion des Timbres (Taxe)</h4>
+                      <p className="text-sm text-gray-600">Définissez les timbres fiscaux en fonction des montants de facture.</p>
+                   </div>
+                   <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-6 py-4 text-center">
+                      <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-1">Timbres Actifs</p>
+                      <p className="text-2xl font-black text-indigo-600">{timbres.filter(t => t.isActive).length}</p>
+                   </div>
+                </div>
+
+                {/* Existing Timbres Table */}
+                {timbres.length > 0 && (
+                  <div className="space-y-4">
+                    <h5 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Timbres Configurés</h5>
+                    <div className="grid gap-4">
+                      {timbres.map((timbre) => (
+                        <motion.div
+                          key={timbre.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-6 bg-white border border-indigo-100 rounded-2xl shadow-sm hover:shadow-md transition-all"
+                        >
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 items-center">
+                            <div>
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Nom</p>
+                              <p className="text-sm font-bold text-gray-900">{timbre.name}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Montant Min</p>
+                              <p className="text-sm font-bold text-gray-900">{new Intl.NumberFormat('fr-DZ', { style: 'currency', currency: 'DZD' }).format(timbre.minAmount)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Montant Max</p>
+                              <p className="text-sm font-bold text-gray-900">{new Intl.NumberFormat('fr-DZ', { style: 'currency', currency: 'DZD' }).format(timbre.maxAmount)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Pourcentage</p>
+                              <p className="text-sm font-bold text-indigo-600">{timbre.percentage}%</p>
+                            </div>
+                            <div className="flex items-center gap-2 justify-end">
+                              {timbre.isActive ? (
+                                <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-bold">Actif</span>
+                              ) : (
+                                <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-[10px] font-bold">Inactif</span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setNewTimbre({ ...timbre, minAmount: timbre.minAmount.toString(), maxAmount: timbre.maxAmount.toString(), percentage: timbre.percentage.toString() });
+                                  setEditingTimbreId(timbre.id);
+                                }}
+                                className="p-2 hover:bg-indigo-50 rounded-lg text-indigo-600 transition-colors"
+                                title="Modifier"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (window.confirm('Supprimer ce timbre ?')) {
+                                    await deleteTimbre(timbre.id);
+                                    showNotification('success', 'Timbre supprimé');
+                                  }
+                                }}
+                                className="p-2 hover:bg-red-50 rounded-lg text-red-600 transition-colors"
+                                title="Supprimer"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add/Edit Timbre Form */}
+                <div className="space-y-6">
+                  <h5 className="text-xs font-bold text-gray-500 uppercase tracking-widest">{editingTimbreId ? 'Modifier le Timbre' : 'Ajouter un Nouveau Timbre'}</h5>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const timbreData = {
+                        name: newTimbre.name,
+                        minAmount: parseFloat(newTimbre.minAmount),
+                        maxAmount: parseFloat(newTimbre.maxAmount),
+                        percentage: parseFloat(newTimbre.percentage),
+                        isActive: newTimbre.isActive,
+                      };
+                      
+                      if (editingTimbreId) {
+                        await updateTimbre(editingTimbreId, timbreData);
+                        showNotification('success', 'Timbre mis à jour');
+                        setEditingTimbreId(null);
+                      } else {
+                        await addTimbre(timbreData);
+                        showNotification('success', 'Timbre ajouté');
+                      }
+                      setNewTimbre({ name: '', minAmount: '', maxAmount: '', percentage: '', isActive: true });
+                    } catch (error) {
+                      showNotification('error', 'Erreur lors de l\'opération');
+                      console.error('Error:', error);
+                    }
+                  }} className="p-8 bg-indigo-50/30 border border-indigo-200 rounded-2xl space-y-4">
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-2 block">Nom du Timbre</label>
+                        <input 
+                          type="text" 
+                          value={newTimbre.name}
+                          onChange={(e) => setNewTimbre({...newTimbre, name: e.target.value})}
+                          placeholder="Ex: Timbre 1000-5000" 
+                          className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 text-sm font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-2 block">Pourcentage (%)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          min="0"
+                          value={newTimbre.percentage}
+                          onChange={(e) => setNewTimbre({...newTimbre, percentage: e.target.value})}
+                          placeholder="0.50" 
+                          className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 text-sm font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-2 block">Montant Min (DA)</label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          value={newTimbre.minAmount}
+                          onChange={(e) => setNewTimbre({...newTimbre, minAmount: e.target.value})}
+                          placeholder="1000" 
+                          className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 text-sm font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-2 block">Montant Max (DA)</label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          value={newTimbre.maxAmount}
+                          onChange={(e) => setNewTimbre({...newTimbre, maxAmount: e.target.value})}
+                          placeholder="5000" 
+                          className="w-full bg-white border border-indigo-200 rounded-xl py-3 px-4 text-sm font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {newTimbre.minAmount && newTimbre.maxAmount && newTimbre.percentage && (
+                      <div className="p-4 bg-indigo-100 border border-indigo-300 rounded-xl">
+                        <p className="text-sm text-indigo-900"><strong>Aperçu:</strong> Pour un total entre {new Intl.NumberFormat('fr-DZ', { style: 'currency', currency: 'DZD' }).format(parseFloat(newTimbre.minAmount))} et {new Intl.NumberFormat('fr-DZ', { style: 'currency', currency: 'DZD' }).format(parseFloat(newTimbre.maxAmount))} → <strong>{newTimbre.percentage}%</strong> de timbre</p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 p-4 bg-white border border-indigo-200 rounded-xl">
+                      <input 
+                        type="checkbox" 
+                        checked={newTimbre.isActive}
+                        onChange={(e) => setNewTimbre({...newTimbre, isActive: e.target.checked})}
+                        className="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
+                        id="timbre-active"
+                      />
+                      <label htmlFor="timbre-active" className="text-sm font-bold text-gray-700 cursor-pointer">Timbre actif (appliqué aux nouvelles factures)</label>
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      {editingTimbreId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTimbreId(null);
+                            setNewTimbre({ name: '', minAmount: '', maxAmount: '', percentage: '', isActive: true });
+                          }}
+                          className="flex-1 py-3 rounded-xl font-bold text-gray-600 hover:bg-gray-100 transition-colors text-xs uppercase tracking-wider"
+                        >
+                          Annuler
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        className="flex-1 bg-indigo-600 text-white rounded-xl py-3 font-bold text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-lg transition-all"
+                      >
+                        {editingTimbreId ? 'Mettre à Jour' : 'Ajouter le Timbre'}
+                      </button>
+                    </div>
+                  </form>
                 </div>
              </div>
            )}

@@ -60,10 +60,11 @@ const Login = () => {
         console.error('[Login] login() returned error:', loginError);
 
         // Distinguish server-side infrastructure errors from wrong credentials
+        const err = loginError as any;
         const isServerError =
-          (loginError as any)?.status === 500 ||
-          loginError?.message?.includes('querying schema') ||
-          loginError?.message?.includes('Database error');
+          err?.status === 500 ||
+          err?.message?.includes('querying schema') ||
+          err?.message?.includes('Database error');
 
         if (isServerError) {
           setError(
@@ -229,22 +230,28 @@ const Login = () => {
       >
         <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 md:p-12 border border-white/40">
           <div className="flex flex-col items-center mb-10 text-center">
-            <motion.div 
-              initial={{ rotate: -10, scale: 0 }}
-              animate={{ rotate: 0, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 100 }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center shadow-xl mb-6 overflow-hidden border-2 border-white/40 bg-white"
-            >
-              {settings.logo ? (
-                <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
-                  <Landmark className="text-white" size={40} />
-                </div>
-              )}
-            </motion.div>
+            {(!settings.name || settings.name === 'Entreprise') && !settings.logo ? (
+              <div className="animate-pulse bg-gray-200 rounded-3xl w-20 h-20 mx-auto mb-6 shadow-lg" />
+            ) : (
+              <motion.div 
+                initial={{ rotate: -10, scale: 0 }}
+                animate={{ rotate: 0, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 100 }}
+                className="w-20 h-20 rounded-3xl flex items-center justify-center shadow-xl mb-6 overflow-hidden border-2 border-white/40 bg-white"
+              >
+                {settings.logo ? (
+                  <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+                    <Landmark className="text-white" size={40} />
+                  </div>
+                )}
+              </motion.div>
+            )}
             <h1 className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent tracking-tight">
-              {settings.name || t('company_name')}
+              {settings.name ? settings.name : (
+                <div className="w-48 h-8 bg-gray-100 animate-pulse rounded-lg mx-auto"></div>
+              )}
             </h1>
             <p className="text-gray-500 mt-2 font-semibold">{t('login')}</p>
           </div>

@@ -14,6 +14,7 @@ import {
 import { useLanguage } from '../context/LanguageContext';
 import { useApp } from '../context/AppContext';
 import { uploadJustificatif } from '../lib/storage';
+import { useAuth } from '../context/AuthContext';
 import { formatAmount, cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -28,6 +29,7 @@ const CATEGORIES = [
 ];
 
 const Depenses = () => {
+  const { hasPermission } = useAuth();
   const { t, isRTL } = useLanguage();
   const { transactions, addTransaction, updateTransaction, deleteTransaction, loading, settings } = useApp();
   
@@ -247,15 +249,17 @@ const Depenses = () => {
           </h1>
           <p className="text-gray-600 font-semibold mt-1">Gérez les dépenses opérationnelles de votre entreprise</p>
         </div>
-        <motion.button 
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => { setEditingExpense(null); setShowModal(true); }}
-          className="flex items-center justify-center gap-2 bg-gradient-to-br from-red-600 via-rose-600 to-pink-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-red-500/40 transition-all"
-        >
-          <Plus size={20} />
-          Nouvelle Dépense
-        </motion.button>
+        {hasPermission('action_create') && (
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { setEditingExpense(null); setShowModal(true); }}
+            className="flex items-center justify-center gap-2 bg-gradient-to-br from-red-600 via-rose-600 to-pink-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-red-500/40 transition-all"
+          >
+            <Plus size={20} />
+            Nouvelle Dépense
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Stats Cards */}
@@ -370,14 +374,20 @@ const Depenses = () => {
                        <span className="text-sm font-black text-red-600">-{formatAmount(item.amount)}</span>
                     </td>
                     <td className="px-6 py-4 text-end whitespace-nowrap">
-                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {item.proof && (
-                            <a href={item.proof} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-red-100 rounded-xl text-red-600 transition-all" title="Voir Justificatif"><ExternalLink size={16}/></a>
-                          )}
-                          <button onClick={() => handleEdit(item)} className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 transition-all" title="Modifier"><Edit size={16}/></button>
-                          <button onClick={() => deleteTransaction(item.id)} className="p-2 hover:bg-red-100 rounded-xl text-red-600 transition-all" title="Supprimer"><Trash2 size={16}/></button>
-                          <button onClick={() => handlePrint(item)} className="p-2 hover:bg-gray-100 rounded-xl text-gray-900 transition-all"><Printer size={16}/></button>
-                       </div>
+                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                           {item.proof && (
+                             <a href={item.proof} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-red-100 rounded-xl text-red-600 transition-all" title="Voir Justificatif"><ExternalLink size={16}/></a>
+                           )}
+                           {hasPermission('action_edit') && (
+                             <button onClick={() => handleEdit(item)} className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 transition-all" title="Modifier"><Edit size={16}/></button>
+                           )}
+                           {hasPermission('action_delete') && (
+                             <button onClick={() => deleteTransaction(item.id)} className="p-2 hover:bg-red-100 rounded-xl text-red-600 transition-all" title="Supprimer"><Trash2 size={16}/></button>
+                           )}
+                           {hasPermission('action_print') && (
+                             <button onClick={() => handlePrint(item)} className="p-2 hover:bg-gray-100 rounded-xl text-gray-900 transition-all"><Printer size={16}/></button>
+                           )}
+                        </div>
                     </td>
                  </tr>
                ))}

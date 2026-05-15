@@ -8,7 +8,10 @@ import {
   UserPlus, Search, Shield, User, 
   Trash2, Edit, X, CheckSquare, 
   Square, Eye, Printer, History, 
-  Settings, Lock, Save, AlertCircle
+  Settings, Lock, Save, AlertCircle,
+  Landmark, ArrowLeftRight, Wallet, ShoppingBag, ShoppingCart, Truck, Receipt, 
+  Package, Wrench, Clipboard, FileCheck, Plus, FileText, File, UserCircle,
+  LayoutDashboard, Users
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -110,48 +113,68 @@ const Utilisateurs = () => {
 
   // Caisse mode interfaces
   const caisseInterfaces = [
-    { id: 'mode_caisse', label: '📊 Mode Caisse', icon: 'dashboard' },
-    { id: 'dashboard', label: 'Tableau de bord', icon: 'dashboard' },
-    { id: 'caisse', label: 'Caisse', icon: 'wallet' },
-    { id: 'banque', label: 'Banque', icon: 'bank' },
-    { id: 'transfert', label: 'Transfert', icon: 'arrow' },
-    { id: 'ventes', label: 'Ventes', icon: 'shopping' },
-    { id: 'achats', label: 'Achats & Dettes', icon: 'shopping-cart' },
-    { id: 'clients', label: 'Clients', icon: 'users' },
-    { id: 'fournisseurs', label: 'Fournisseurs', icon: 'truck' },
-    { id: 'utilisateurs', label: 'Utilisateurs', icon: 'user' },
-    { id: 'rapports', label: 'Rapports', icon: 'file' },
-    { id: 'parametres', label: 'Paramètres', icon: 'settings' },
+    { id: 'view_dashboard',  label: 'Tableau de bord',    icon: LayoutDashboard },
+    { id: 'view_caisse',     label: 'Caisse',             icon: Wallet },
+    { id: 'view_bank',       label: 'Banque',             icon: Landmark },
+    { id: 'view_transfer',   label: 'Transferts',         icon: ArrowLeftRight },
+    { id: 'view_sales',      label: 'Ventes',             icon: ShoppingBag },
+    { id: 'view_purchases',  label: 'Achats & Dettes',    icon: ShoppingCart },
+    { id: 'view_clients',    label: 'Clients',            icon: Users },
+    { id: 'view_suppliers',  label: 'Fournisseurs',       icon: Truck },
+    { id: 'view_expenses',   label: 'Dépenses',           icon: Receipt },
+    { id: 'view_users',      label: 'Utilisateurs',       icon: UserCircle },
+    { id: 'view_reports',    label: 'Rapports',           icon: FileText },
+    { id: 'view_settings',   label: 'Paramètres',         icon: Settings },
   ];
 
   // Commercial mode interfaces
   const commercialInterfaces = [
-    { id: 'mode_commercial', label: '🏢 Mode Commercial', icon: 'briefcase' },
-    { id: 'caisse', label: 'Caisse', icon: 'wallet' },
-    { id: 'dashboard_commercial', label: 'Dashboard Commercial', icon: 'dashboard' },
-    { id: 'stockage', label: 'Stockage', icon: 'box' },
-    { id: 'production', label: 'Production', icon: 'wrench' },
-    { id: 'achats', label: 'Achats & Dettes', icon: 'shopping-cart' },
-    { id: 'ventes', label: 'Ventes', icon: 'shopping' },
-    { id: 'fournisseurs', label: 'Fournisseurs', icon: 'truck' },
-    { id: 'clients', label: 'Clients', icon: 'users' },
-    { id: 'bon_commande', label: 'Bon de Commande', icon: 'file' },
-    { id: 'bon_livraison', label: 'Bon de Livraison', icon: 'file' },
-    { id: 'bon_reception', label: 'Bon de Réception', icon: 'file' },
-    { id: 'facture_proformat', label: 'Facture Proformat', icon: 'file' },
-    { id: 'utilisateurs', label: 'Utilisateurs', icon: 'user' },
-    { id: 'inventaire', label: 'Inventaire', icon: 'box' },
-    { id: 'rapports', label: 'Rapports', icon: 'file' },
-    { id: 'parametres', label: 'Paramètres', icon: 'settings' },
+    { id: 'view_dashboard',    label: 'Dashboard',          icon: LayoutDashboard },
+    { id: 'view_sales',        label: 'Ventes',             icon: ShoppingBag },
+    { id: 'view_purchases',    label: 'Achats & Dettes',    icon: ShoppingCart },
+    { id: 'view_clients',      label: 'Clients',            icon: Users },
+    { id: 'view_suppliers',    label: 'Fournisseurs',       icon: Truck },
+    { id: 'view_stockage',     label: 'Stockage',           icon: Package },
+    { id: 'view_production',   label: 'Production',         icon: Wrench },
+    { id: 'view_bon_commande', label: 'Bon de Commande',    icon: Clipboard },
+    { id: 'view_bon_livraison',label: 'Bon de Livraison',   icon: FileCheck },
+    { id: 'view_bon_reception',label: 'Bon de Réception',   icon: File },
+    { id: 'view_proformat',    label: 'Facture Proformat',  icon: FileText },
+    { id: 'view_inventaire',   label: 'Inventaire',         icon: Package },
+    { id: 'view_users',        label: 'Utilisateurs',       icon: UserCircle },
+    { id: 'view_reports',      label: 'Rapports',           icon: FileText },
+    { id: 'view_settings',     label: 'Paramètres',         icon: Settings },
   ];
 
-  const actions = [
-    { id: 'create', label: 'Créer' },
-    { id: 'view', label: 'Voir Détails' },
-    { id: 'edit', label: 'Modifier' },
-    { id: 'print', label: 'Imprimer' },
-    { id: 'delete', label: 'Supprimer' },
+  const actionPermissions = [
+    { id: 'action_create',    label: 'Créer',               icon: Plus,       color: 'emerald' },
+    { id: 'action_edit',      label: 'Modifier',            icon: Edit,       color: 'blue' },
+    { id: 'action_delete',    label: 'Supprimer',           icon: Trash2,     color: 'red' },
+    { id: 'action_print',     label: 'Imprimer',            icon: Printer,    color: 'purple' },
+    { id: 'action_pay_debts', label: 'Régler les dettes',   icon: CheckSquare,color: 'amber' },
   ];
+
+  const selectAll = () => {
+    const allIds: Record<string, boolean> = {};
+    if (permissionTab === 'interfaces') {
+      if (selectedModes.caisse) caisseInterfaces.forEach(i => { allIds[i.id] = true; });
+      if (selectedModes.commercial) commercialInterfaces.forEach(i => { allIds[i.id] = true; });
+    } else {
+      actionPermissions.forEach(i => { allIds[i.id] = true; });
+    }
+    setUserPermissions(prev => ({ ...prev, ...allIds }));
+  };
+
+  const deselectAll = () => {
+    const cleared = { ...userPermissions };
+    if (permissionTab === 'interfaces') {
+      if (selectedModes.caisse) caisseInterfaces.forEach(i => delete cleared[i.id]);
+      if (selectedModes.commercial) commercialInterfaces.forEach(i => delete cleared[i.id]);
+    } else {
+      actionPermissions.forEach(i => delete cleared[i.id]);
+    }
+    setUserPermissions(cleared);
+  };
 
   const togglePermission = (id: string) => {
     setUserPermissions(prev => ({
@@ -452,11 +475,22 @@ const Utilisateurs = () => {
                     </td>
                     <td className="px-6 py-4 text-end whitespace-nowrap">
                        <div className="flex items-center justify-end gap-2">
-                          <button 
+                          <button
                             onClick={() => setShowPermissions(user.id)}
-                            className="action-btn-success" title="Permissions"
+                            className={cn(
+                              "flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all border",
+                              user.user_permissions?.length > 0
+                                ? "bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100"
+                                : "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100"
+                            )}
+                            title="Gérer les permissions"
                           >
-                             <Shield size={18} />
+                            <Shield size={14} />
+                            <span>
+                              {user.user_permissions?.length > 0
+                                ? `${user.user_permissions.filter((p: any) => p.granted).length} accès`
+                                : 'Aucun accès'}
+                            </span>
                           </button>
                           <button onClick={() => handleEditUser(user)} className="action-btn-edit" title="Modifier"><Edit size={18}/></button>
                           <button onClick={() => handleDeleteUser(user.id, user.name)} className="action-btn-delete" title="Supprimer"><Trash2 size={18}/></button>
@@ -505,146 +539,224 @@ const Utilisateurs = () => {
                   <button onClick={() => { setShowPermissions(null); setUserPermissions({}); }} className="p-2 hover:bg-white rounded-xl shadow-sm text-gray-400 transition-colors"><X size={20}/></button>
                 </div>
                 
-                <div className="px-10 py-6 bg-gray-50/50 border-b border-gray-100 space-y-4 shrink-0">
-                  {/* Mode Selection */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Sélectionner le mode d'accès</p>
-                    <div className="flex gap-3">
-                      <label className="flex items-center gap-3 p-3 border border-teal-200 rounded-xl cursor-pointer hover:bg-teal-50 transition-all flex-1">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedModes.caisse}
-                          onChange={(e) => {
-                            setSelectedModes({...selectedModes, caisse: e.target.checked});
-                            if (!e.target.checked) {
-                              // Remove caisse permissions if unchecked
-                              const newPerms = {...userPermissions};
-                              caisseInterfaces.forEach(i => delete newPerms[i.id]);
-                              setUserPermissions(newPerms);
-                            }
-                          }}
-                          className="w-4 h-4 accent-teal-600 rounded"
-                        />
-                        <span className="text-sm font-bold text-gray-700">📊 Mode Caisse</span>
-                      </label>
-                      <label className="flex items-center gap-3 p-3 border border-cyan-200 rounded-xl cursor-pointer hover:bg-cyan-50 transition-all flex-1">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedModes.commercial}
-                          onChange={(e) => {
-                            setSelectedModes({...selectedModes, commercial: e.target.checked});
-                            if (!e.target.checked) {
-                              // Remove commercial permissions if unchecked
-                              const newPerms = {...userPermissions};
-                              commercialInterfaces.forEach(i => delete newPerms[i.id]);
-                              setUserPermissions(newPerms);
-                            }
-                          }}
-                          className="w-4 h-4 accent-cyan-600 rounded"
-                        />
-                        <span className="text-sm font-bold text-gray-700">🏢 Commercial</span>
-                      </label>
+                 <div className="px-10 py-6 bg-gray-50/50 border-b border-gray-100 space-y-6 shrink-0">
+                    {/* Mode Selection Redesigned */}
+                    <div className="space-y-4">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Modules d'accès</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div
+                          onClick={() => setSelectedModes(prev => ({ ...prev, caisse: !prev.caisse }))}
+                          className={cn(
+                            "relative cursor-pointer rounded-2xl p-5 border-2 transition-all group",
+                            selectedModes.caisse
+                              ? "border-teal-500 bg-teal-50 shadow-lg shadow-teal-100"
+                              : "border-gray-200 bg-white hover:border-teal-300"
+                          )}
+                        >
+                          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-colors",
+                            selectedModes.caisse ? "bg-teal-600 text-white" : "bg-gray-100 text-gray-400 group-hover:bg-teal-100 group-hover:text-teal-600"
+                          )}>
+                            <Wallet size={20} />
+                          </div>
+                          <p className="font-black text-sm text-gray-900">Mode Caisse</p>
+                          <p className="text-[10px] text-gray-500 mt-1">Transactions, Banque, Clients...</p>
+                          {selectedModes.caisse && (
+                            <div className="absolute top-3 right-3 w-6 h-6 bg-teal-600 rounded-full flex items-center justify-center shadow-md">
+                              <CheckSquare size={12} className="text-white" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          onClick={() => setSelectedModes(prev => ({ ...prev, commercial: !prev.commercial }))}
+                          className={cn(
+                            "relative cursor-pointer rounded-2xl p-5 border-2 transition-all group",
+                            selectedModes.commercial
+                              ? "border-cyan-500 bg-cyan-50 shadow-lg shadow-cyan-100"
+                              : "border-gray-200 bg-white hover:border-cyan-300"
+                          )}
+                        >
+                          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-colors",
+                            selectedModes.commercial ? "bg-cyan-600 text-white" : "bg-gray-100 text-gray-400 group-hover:bg-cyan-100 group-hover:text-cyan-600"
+                          )}>
+                            <Package size={20} />
+                          </div>
+                          <p className="font-black text-sm text-gray-900">Mode Commercial</p>
+                          <p className="text-[10px] text-gray-500 mt-1">Stock, BL, Production, Proformat...</p>
+                          {selectedModes.commercial && (
+                            <div className="absolute top-3 right-3 w-6 h-6 bg-cyan-600 rounded-full flex items-center justify-center shadow-md">
+                              <CheckSquare size={12} className="text-white" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Tab Buttons */}
-                  <div className="flex gap-4">
-                    <button 
-                      onClick={() => setPermissionTab('interfaces')}
-                      className={cn(
-                        "px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
-                        permissionTab === 'interfaces' ? "bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-lg shadow-teal-100" : "bg-white text-gray-500 border border-gray-200"
-                      )}
-                    >
-                      Accès Interfaces
-                    </button>
-                    <button 
-                      onClick={() => setPermissionTab('actions')}
-                      className={cn(
-                        "px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
-                        permissionTab === 'actions' ? "bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-lg shadow-teal-100" : "bg-white text-gray-500 border border-gray-200"
-                      )}
-                    >
-                      Permissions d'Actions
-                    </button>
-                  </div>
-                </div>
+                    {/* Tab Buttons and Batch Actions */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setPermissionTab('interfaces')}
+                          className={cn(
+                            "px-6 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all",
+                            permissionTab === 'interfaces' ? "bg-slate-900 text-white shadow-lg" : "bg-white text-gray-500 border border-gray-200 hover:border-gray-300"
+                          )}
+                        >
+                          Interfaces
+                        </button>
+                        <button 
+                          onClick={() => setPermissionTab('actions')}
+                          className={cn(
+                            "px-6 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all",
+                            permissionTab === 'actions' ? "bg-slate-900 text-white shadow-lg" : "bg-white text-gray-500 border border-gray-200 hover:border-gray-300"
+                          )}
+                        >
+                          Actions
+                        </button>
+                      </div>
+
+                      <div className="flex gap-4 items-center">
+                        <button onClick={selectAll} className="text-[10px] font-black text-teal-600 hover:text-teal-700 uppercase tracking-widest transition-colors">
+                          Tout cocher
+                        </button>
+                        <div className="w-px h-3 bg-gray-200" />
+                        <button onClick={deselectAll} className="text-[10px] font-black text-red-500 hover:text-red-600 uppercase tracking-widest transition-colors">
+                          Tout décocher
+                        </button>
+                      </div>
+                    </div>
+                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-10">
-                   {permissionTab === 'interfaces' ? (
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                        {selectedModes.caisse && (
-                          <>
-                            {caisseInterfaces.map((item) => (
-                              <div 
-                                key={item.id} 
-                                onClick={() => togglePermission(item.id)}
-                                className="flex items-center justify-between cursor-pointer group p-4 border border-gray-50 rounded-2xl hover:border-teal-100 hover:bg-teal-50/20 transition-all"
-                              >
-                                 <div>
-                                   <span className="text-sm font-black text-gray-900 group-hover:text-teal-600 transition-colors uppercase tracking-tight">{item.label}</span>
+                 <div className="flex-1 overflow-y-auto p-10 bg-white">
+                    {permissionTab === 'interfaces' ? (
+                      <div className="space-y-8">
+                         {selectedModes.caisse && (
+                           <div className="space-y-4">
+                             <h4 className="text-[10px] font-black text-teal-600 uppercase tracking-[0.2em]">Interfaces Caisse</h4>
+                             <div className="grid grid-cols-2 gap-4">
+                               {caisseInterfaces.map((item) => (
+                                 <div 
+                                   key={item.id} 
+                                   onClick={() => togglePermission(item.id)}
+                                   className={cn(
+                                     "flex items-center justify-between cursor-pointer group p-4 rounded-2xl border-2 transition-all",
+                                     userPermissions[item.id] ? "border-teal-500 bg-teal-50/30" : "border-gray-50 bg-gray-50/50 hover:border-gray-200"
+                                   )}
+                                 >
+                                    <div className="flex items-center gap-3">
+                                       <div className={cn(
+                                         "w-9 h-9 rounded-xl flex items-center justify-center transition-all",
+                                         userPermissions[item.id] ? "bg-teal-600 text-white shadow-md" : "bg-white text-gray-400 border border-gray-100"
+                                       )}>
+                                          <item.icon size={16} />
+                                       </div>
+                                       <span className={cn(
+                                         "text-xs font-bold transition-colors",
+                                         userPermissions[item.id] ? "text-teal-900" : "text-gray-600"
+                                       )}>{item.label}</span>
+                                    </div>
+                                    <div className={cn(
+                                      "w-10 h-5 rounded-full transition-all relative shrink-0",
+                                      userPermissions[item.id] ? "bg-teal-500" : "bg-gray-200"
+                                    )}>
+                                      <div className={cn(
+                                        "w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow-sm",
+                                        userPermissions[item.id] ? "left-5.5" : "left-0.5"
+                                      )} />
+                                    </div>
                                  </div>
-                                 <div className={cn(
-                                    "w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0",
-                                    userPermissions[item.id] ? "bg-gradient-to-br from-teal-600 to-cyan-600 text-white shadow-md" : "bg-gray-100 text-gray-300"
-                                 )}>
-                                    {userPermissions[item.id] ? <CheckSquare size={18} /> : <Square size={18} />}
-                                 </div>
-                              </div>
-                            ))}
-                          </>
-                        )}
+                               ))}
+                             </div>
+                           </div>
+                         )}
                         
-                        {selectedModes.commercial && (
-                          <>
-                            {commercialInterfaces.map((item) => (
-                              <div 
-                                key={item.id} 
-                                onClick={() => togglePermission(item.id)}
-                                className="flex items-center justify-between cursor-pointer group p-4 border border-gray-50 rounded-2xl hover:border-cyan-100 hover:bg-cyan-50/20 transition-all"
-                              >
-                                 <div>
-                                   <span className="text-sm font-black text-gray-900 group-hover:text-cyan-600 transition-colors uppercase tracking-tight">{item.label}</span>
+                         {selectedModes.commercial && (
+                           <div className="space-y-4">
+                             <h4 className="text-[10px] font-black text-cyan-600 uppercase tracking-[0.2em]">Interfaces Commercial</h4>
+                             <div className="grid grid-cols-2 gap-4">
+                               {commercialInterfaces.map((item) => (
+                                 <div 
+                                   key={item.id} 
+                                   onClick={() => togglePermission(item.id)}
+                                   className={cn(
+                                     "flex items-center justify-between cursor-pointer group p-4 rounded-2xl border-2 transition-all",
+                                     userPermissions[item.id] ? "border-cyan-500 bg-cyan-50/30" : "border-gray-50 bg-gray-50/50 hover:border-gray-200"
+                                   )}
+                                 >
+                                    <div className="flex items-center gap-3">
+                                       <div className={cn(
+                                         "w-9 h-9 rounded-xl flex items-center justify-center transition-all",
+                                         userPermissions[item.id] ? "bg-cyan-600 text-white shadow-md" : "bg-white text-gray-400 border border-gray-100"
+                                       )}>
+                                          <item.icon size={16} />
+                                       </div>
+                                       <span className={cn(
+                                         "text-xs font-bold transition-colors",
+                                         userPermissions[item.id] ? "text-cyan-900" : "text-gray-600"
+                                       )}>{item.label}</span>
+                                    </div>
+                                    <div className={cn(
+                                      "w-10 h-5 rounded-full transition-all relative shrink-0",
+                                      userPermissions[item.id] ? "bg-cyan-500" : "bg-gray-200"
+                                    )}>
+                                      <div className={cn(
+                                        "w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow-sm",
+                                        userPermissions[item.id] ? "left-5.5" : "left-0.5"
+                                      )} />
+                                    </div>
                                  </div>
+                               ))}
+                             </div>
+                           </div>
+                         )}
+
+                         {!selectedModes.caisse && !selectedModes.commercial && (
+                           <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
+                             <Shield className="mx-auto text-gray-300 mb-4" size={48} />
+                             <p className="text-gray-500 font-bold">Activez au moins un module pour configurer les interfaces</p>
+                           </div>
+                         )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-4">
+                         {actionPermissions.map((item) => (
+                           <div 
+                             key={item.id} 
+                             onClick={() => togglePermission(item.id)}
+                             className={cn(
+                               "flex items-center justify-between cursor-pointer group p-5 rounded-2xl border-2 transition-all",
+                               userPermissions[item.id] ? `border-${item.color}-500 bg-${item.color}-50/30` : "border-gray-50 bg-gray-50/50 hover:border-gray-200"
+                             )}
+                           >
+                              <div className="flex items-center gap-4">
                                  <div className={cn(
-                                    "w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0",
-                                    userPermissions[item.id] ? "bg-gradient-to-br from-cyan-600 to-blue-600 text-white shadow-md" : "bg-gray-100 text-gray-300"
+                                   "w-11 h-11 rounded-2xl flex items-center justify-center transition-all shrink-0",
+                                   userPermissions[item.id] ? `bg-${item.color}-600 text-white shadow-lg` : "bg-white text-gray-400 border border-gray-100"
                                  )}>
-                                    {userPermissions[item.id] ? <CheckSquare size={18} /> : <Square size={18} />}
+                                    <item.icon size={20} />
+                                 </div>
+                                 <div>
+                                   <p className={cn(
+                                     "text-sm font-black transition-colors leading-none",
+                                     userPermissions[item.id] ? `text-${item.color}-900` : "text-gray-700"
+                                   )}>{item.label}</p>
+                                   <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase tracking-widest">Permission globale</p>
                                  </div>
                               </div>
-                            ))}
-                          </>
-                        )}
-
-                        {!selectedModes.caisse && !selectedModes.commercial && (
-                          <div className="col-span-2 text-center py-12 opacity-50">
-                            <p className="text-gray-500 font-semibold">Sélectionnez d'abord un mode d'accès ci-dessus</p>
-                          </div>
-                        )}
-                     </div>
-                   ) : (
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                        {actions.map((item) => (
-                          <div 
-                            key={item.id} 
-                            onClick={() => togglePermission(item.id)}
-                            className="flex items-center justify-between cursor-pointer group p-4 border border-gray-50 rounded-2xl hover:border-teal-100 hover:bg-teal-50/20 transition-all"
-                          >
-                             <div>
-                               <span className="text-sm font-black text-gray-900 group-hover:text-teal-600 transition-colors uppercase tracking-tight">{item.label}</span>
-                             </div>
-                             <div className={cn(
-                                "w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0",
-                                userPermissions[item.id] ? "bg-gradient-to-br from-teal-600 to-cyan-600 text-white shadow-md" : "bg-gray-100 text-gray-300"
-                             )}>
-                                {userPermissions[item.id] ? <CheckSquare size={18} /> : <Square size={18} />}
-                             </div>
-                          </div>
-                        ))}
-                     </div>
-                   )}
-                </div>
+                              <div className={cn(
+                                "w-11 h-6 rounded-full transition-all relative shrink-0",
+                                userPermissions[item.id] ? `bg-${item.color}-500` : "bg-gray-200"
+                              )}>
+                                <div className={cn(
+                                  "w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow-md",
+                                  userPermissions[item.id] ? "left-5.5" : "left-0.5"
+                                )} />
+                              </div>
+                           </div>
+                         ))}
+                      </div>
+                    )}
+                 </div>
 
                 <div className="p-10 border-t border-gray-100 shrink-0">
                    <button 

@@ -9,10 +9,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import {
   Plus, Search, Edit, Trash2, Printer, Eye, X,
   Users, TrendingUp, TrendingDown, Calendar, Phone, Check,
-  Mail, MapPin, AlertCircle, Clock, CreditCard
+  Mail, MapPin, AlertCircle, Clock, CreditCard, Upload, ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
@@ -246,6 +247,30 @@ function ViewModal({ client, onClose }: {
               <p className="text-sm text-gray-700">{client.notes}</p>
             </div>
           )}
+
+          {client.documents && client.documents.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Documents ({client.documents.length})</p>
+              <div className="grid grid-cols-4 md:grid-cols-6 gap-3">
+                {client.documents.map((docUrl, idx) => (
+                  <a
+                    key={idx}
+                    href={docUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="aspect-square bg-rose-50 border-2 border-rose-200 rounded-lg flex items-center justify-center overflow-hidden hover:border-rose-400 hover:shadow-md transition-all"
+                    title="Cliquer pour ouvrir"
+                  >
+                    {docUrl.toLowerCase().includes('image') || docUrl.includes('.jpg') || docUrl.includes('.png') || docUrl.includes('.gif') || docUrl.includes('.webp') ? (
+                      <img src={docUrl} alt={`Document ${idx + 1}`} className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="text-rose-400" size={20} />
+                    )}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="px-8 py-5 border-t border-rose-100 bg-rose-50/30 flex justify-between">
@@ -297,11 +322,48 @@ const ClientForm: React.FC<{
       dateCreated: new Date().toISOString().split('T')[0],
       totalPurchases: 0,
       notes: '',
+      documents: [],
     }
   );
 
-  const handleSave = () => {
-    onSave(form);
+  const [docFiles, setDocFiles] = useState<File[]>([]);
+  const [existingDocs, setExistingDocs] = useState<string[]>(client?.documents || []);
+  const [uploading, setUploading] = useState(false);
+
+  const handleAddDocuments = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setDocFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+    }
+  };
+
+  const handleRemoveNewDoc = (index: number) => {
+    setDocFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveExistingDoc = (index: number) => {
+    setExistingDocs(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSave = async () => {
+    // Upload new documents
+    if (docFiles.length > 0) {
+      setUploading(true);
+      try {
+        const { uploadClientDocument } = await import('../lib/storage');
+        const uploadedUrls = await Promise.all(
+          docFiles.map(file => uploadClientDocument(form.id, file))
+        );
+        const validUrls = uploadedUrls.filter((url): url is string => url !== null);
+        setExistingDocs(prev => [...prev, ...validUrls]);
+        setDocFiles([]);
+      } catch (err) {
+        console.error('Error uploading documents:', err);
+      }
+      setUploading(false);
+    }
+
+    // Save form with updated documents
+    onSave({ ...form, documents: existingDocs });
     onClose();
   };
 
@@ -559,6 +621,108 @@ const ClientForm: React.FC<{
                 placeholder="Ajouter des notes..."
               />
             </div>
+
+            {/* Special Client Section */}
+            <div className="mt-6 p-4 bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl space-y-4">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="isSpecial"
+                  checked={form.isSpecial || false}
+                  onChange={e => setForm(f => ({ ...f, isSpecial: e.target.checked }))}
+                  className="w-4 h-4 rounded cursor-pointer"
+                />
+                <label htmlFor="isSpecial" className="font-bold text-sm cursor-pointer text-gray-900">
+                  ⭐ Client Spécial (prix négociable)
+                </label>
+              </div>
+              {form.isSpecial && (
+                <textarea
+                  value={form.specialNote || ''}
+                  onChange={e => setForm(f => ({ ...f, specialNote: e.target.value }))}
+                  placeholder="Note sur ce client spécial (tarifs préférentiels, conditions particulières, etc.)..."
+                  rows={2}
+                  className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-4 focus:ring-amber-500/20 focus:border-amber-500 outline-none resize-none"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* ─── Section: Documents / Photos ─── */}
+          <div>
+            <h3 className="text-xs font-bold text-rose-700 uppercase tracking-widest mb-4 pb-2 border-b border-rose-200">Documents / Photos</h3>
+            
+            {/* Upload Button */}
+            <div className="mb-4">
+              <input
+                type="file"
+                id="doc-upload"
+                multiple
+                accept="image/*,application/pdf"
+                onChange={handleAddDocuments}
+                className="hidden"
+              />
+              <label htmlFor="doc-upload" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 text-white font-bold text-sm shadow-lg hover:shadow-rose-500/40 hover:shadow-xl transition-all cursor-pointer">
+                <Upload size={16} />
+                Ajouter un document
+              </label>
+            </div>
+
+            {/* New Documents Preview */}
+            {docFiles.length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Nouveaux fichiers ({docFiles.length})</p>
+                <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
+                  {docFiles.map((file, idx) => (
+                    <div key={idx} className="relative group">
+                      <div className="aspect-square bg-rose-50 border-2 border-rose-200 rounded-lg flex items-center justify-center overflow-hidden">
+                        {file.type.startsWith('image/') ? (
+                          <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="text-rose-400" size={20} />
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleRemoveNewDoc(idx)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Existing Documents */}
+            {existingDocs.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Documents existants ({existingDocs.length})</p>
+                <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
+                  {existingDocs.map((url, idx) => (
+                    <div key={idx} className="relative group">
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="aspect-square bg-rose-50 border-2 border-rose-200 rounded-lg flex items-center justify-center overflow-hidden hover:border-rose-400 transition-colors">
+                        {url.toLowerCase().includes('image') || url.includes('.jpg') || url.includes('.png') || url.includes('.gif') ? (
+                          <img src={url} alt="Document" className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="text-rose-400" size={20} />
+                        )}
+                      </a>
+                      <button
+                        onClick={() => handleRemoveExistingDoc(idx)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {docFiles.length === 0 && existingDocs.length === 0 && (
+              <p className="text-sm text-gray-400 italic">Aucun document téléchargé</p>
+            )}
           </div>
         </div>
 
@@ -568,10 +732,11 @@ const ClientForm: React.FC<{
           </button>
           <button
             onClick={handleSave}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-br from-rose-600 via-pink-600 to-fuchsia-600 text-white font-bold text-sm shadow-lg hover:shadow-rose-500/40 hover:shadow-xl transition-all"
+            disabled={uploading}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-br from-rose-600 via-pink-600 to-fuchsia-600 text-white font-bold text-sm shadow-lg hover:shadow-rose-500/40 hover:shadow-xl transition-all disabled:opacity-50"
           >
             <Check size={16} />
-            Enregistrer
+            {uploading ? 'Téléchargement...' : 'Enregistrer'}
           </button>
         </div>
       </motion.div>
@@ -587,6 +752,7 @@ function ClientPayDebtModal({ debt, client, onClose, onPaid }: {
   onClose: () => void;
   onPaid: () => void;
 }) {
+  const { user: currentUser } = useAuth();
   const reste = Math.max(0, debt.total_amount - (debt.paid_amount || 0));
   const [payAmount, setPayAmount] = useState<string>(String(reste));
   const [payNote, setPayNote] = useState('');
@@ -634,6 +800,7 @@ function ClientPayDebtModal({ debt, client, onClose, onPaid }: {
         payment_mode: 'especes',
         date: new Date().toISOString().split('T')[0],
         notes: payNote || undefined,
+        created_by: currentUser?.id,
       });
 
       // Update debt paid_amount
@@ -741,26 +908,75 @@ function ClientPayDebtModal({ debt, client, onClose, onPaid }: {
 // ─── Client History Modal ───────────────────────────────────────────────────
 
 function ClientHistoryModal({ client, onClose }: { client: Client; onClose: () => void }) {
+  const { hasPermission } = useAuth();
   const [ventes, setVentes] = useState<any[]>([]);
   const [debts, setDebts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [histDateDebut, setHistDateDebut] = useState('');
+  const [histDateFin, setHistDateFin] = useState('');
+  const [summaryStats, setSummaryStats] = useState({ totalAchats: 0, totalVersements: 0 });
+  const [isFiltered, setIsFiltered] = useState(false);
 
   useEffect(() => { loadHistory(); }, [client.id]);
 
-  const loadHistory = async () => {
+  const loadHistory = async (dateDebut = '', dateFin = '') => {
     setLoading(true);
     const [ventesRes, debtsRes] = await Promise.all([
       supabase.from('ventes').select('*').eq('client_id', client.id).order('date', { ascending: false }),
-      supabase.from('client_debts').select('*, client_debt_payments(*)').eq('client_id', client.id).order('date', { ascending: false }),
+      supabase.from('client_debts').select('*, client_debt_payments(*, creator:created_by(name))').eq('client_id', client.id).order('date', { ascending: false }),
     ]);
     if (ventesRes.data) setVentes(ventesRes.data);
     if (debtsRes.data) setDebts(debtsRes.data);
     setLoading(false);
   };
 
+  const handleGenerateFiltered = async () => {
+    // If both dates are empty, reset to full history
+    if (!histDateDebut && !histDateFin) {
+      await loadHistory();
+      setIsFiltered(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Fetch ventes within date range
+      let ventesQuery = supabase.from('ventes').select('total_ttc, montant_paye, date').eq('client_id', client.id);
+      if (histDateDebut) ventesQuery = ventesQuery.gte('date', histDateDebut);
+      if (histDateFin) ventesQuery = ventesQuery.lte('date', histDateFin);
+      
+      // Fetch client debts with payments
+      let debtsQuery = supabase.from('client_debts').select('id, total_amount, paid_amount, date, client_debt_payments(amount, date)').eq('client_id', client.id);
+      if (histDateDebut) debtsQuery = debtsQuery.gte('date', histDateDebut);
+      if (histDateFin) debtsQuery = debtsQuery.lte('date', histDateFin);
+
+      const [ventesRes, debtsRes] = await Promise.all([ventesQuery, debtsQuery]);
+      
+      // Calculate totals
+      const totalAchats = (ventesRes.data || []).reduce((s, v) => s + (v.total_ttc || 0), 0);
+      const totalVersements = (debtsRes.data || []).reduce((s, d) => {
+        const payments = (d.client_debt_payments || []);
+        const paymentSum = payments.reduce((ps, p) => ps + (p.amount || 0), 0);
+        return s + paymentSum;
+      }, 0);
+      
+      setSummaryStats({ totalAchats, totalVersements });
+      setIsFiltered(true);
+      
+      // Load full data for display
+      if (ventesRes.data) setVentes(ventesRes.data);
+      if (debtsRes.data) setDebts(debtsRes.data);
+    } catch (err) {
+      console.error('Error fetching filtered history:', err);
+    }
+    setLoading(false);
+  };
+
   const totalVentes = ventes.reduce((s, v) => s + (v.total_ttc || 0), 0);
   const totalDettes = debts.reduce((s, d) => s + Math.max(0, d.total_amount - d.paid_amount), 0);
+  const totalVersements = debts.reduce((s, d) => s + (d.paid_amount || 0), 0);
+  const reste = totalVentes - totalVersements;
   const [payingDebt, setPayingDebt] = useState<any | null>(null);
 
   const fmt = (n: number) => new Intl.NumberFormat('fr-DZ', { minimumFractionDigits: 2 }).format(n) + ' DA';
@@ -786,20 +1002,87 @@ function ClientHistoryModal({ client, onClose }: { client: Client; onClose: () =
             <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-rose-600/30 border-t-rose-600 rounded-full animate-spin" /></div>
           ) : (
             <>
-              {/* Stats Cards */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gradient-to-br from-rose-500 to-pink-600 rounded-2xl p-5 text-white">
-                  <p className="text-xs font-bold opacity-75 uppercase tracking-wider mb-1">Total Ventes</p>
-                  <p className="text-2xl font-black">{fmt(totalVentes)}</p>
-                  <p className="text-xs opacity-75 mt-1">{ventes.length} facture(s)</p>
+              {/* Date Range Filter */}
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-rose-50 border border-rose-200 rounded-2xl p-6 space-y-4"
+              >
+                <h3 className="text-sm font-bold text-gray-700 uppercase tracking-widest">Filtre par Période</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Date de Début</label>
+                    <input
+                      type="date"
+                      value={histDateDebut}
+                      onChange={(e) => setHistDateDebut(e.target.value)}
+                      className="w-full bg-white border border-rose-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-4 focus:ring-rose-500/20 focus:border-rose-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Date de Fin</label>
+                    <input
+                      type="date"
+                      value={histDateFin}
+                      onChange={(e) => setHistDateFin(e.target.value)}
+                      className="w-full bg-white border border-rose-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-4 focus:ring-rose-500/20 focus:border-rose-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <button
+                      onClick={handleGenerateFiltered}
+                      className="flex-1 bg-gradient-to-br from-rose-500 to-pink-600 text-white rounded-xl py-2.5 px-4 font-bold text-sm uppercase tracking-wider shadow-lg hover:shadow-xl hover:shadow-rose-500/40 transition-all"
+                    >
+                      Générer
+                    </button>
+                    <button
+                      onClick={() => {
+                        loadHistory();
+                        setIsFiltered(false);
+                        setHistDateDebut('');
+                        setHistDateFin('');
+                      }}
+                      className="flex-1 bg-gray-200 text-gray-700 rounded-xl py-2.5 px-4 font-bold text-sm uppercase tracking-wider shadow-lg hover:shadow-xl hover:bg-gray-300 transition-all"
+                    >
+                      Réinitialiser
+                    </button>
+                  </div>
                 </div>
-                <div className={`rounded-2xl p-5 text-white ${
-                  totalDettes > 0 ? 'bg-gradient-to-br from-red-500 to-rose-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'
-                }`}>
-                  <p className="text-xs font-bold opacity-75 uppercase tracking-wider mb-1">Total Dettes Client</p>
-                  <p className="text-2xl font-black">{fmt(totalDettes)}</p>
-                  <p className="text-xs opacity-75 mt-1">{debts.filter(d => d.total_amount > d.paid_amount).length} impayée(s)</p>
-                </div>
+              </motion.div>
+
+              {/* Summary Stats Cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl p-5 text-white"
+                >
+                  <p className="text-xs font-bold opacity-75 uppercase tracking-wider mb-1">Total Achats</p>
+                  <p className="text-2xl font-black">{fmt(isFiltered ? summaryStats.totalAchats : totalVentes)}</p>
+                  <p className="text-xs opacity-75 mt-1">{isFiltered ? 'période filtrée' : `${ventes.length} facture(s)`}</p>
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.05 }}
+                  className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 text-white"
+                >
+                  <p className="text-xs font-bold opacity-75 uppercase tracking-wider mb-1">Total Versements</p>
+                  <p className="text-2xl font-black">{fmt(isFiltered ? summaryStats.totalVersements : totalVersements)}</p>
+                  <p className="text-xs opacity-75 mt-1">{isFiltered ? 'période filtrée' : `${debts.filter(d => d.paid_amount > 0).length} paiement(s)`}</p>
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.1 }}
+                  className={`rounded-2xl p-5 text-white ${
+                    (isFiltered ? (summaryStats.totalAchats - summaryStats.totalVersements) : reste) > 0 ? 'bg-gradient-to-br from-red-500 to-rose-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                  }`}
+                >
+                  <p className="text-xs font-bold opacity-75 uppercase tracking-wider mb-1">Reste / Dette</p>
+                  <p className="text-2xl font-black">{fmt(Math.abs(isFiltered ? (summaryStats.totalAchats - summaryStats.totalVersements) : reste))}</p>
+                  <p className="text-xs opacity-75 mt-1">{(isFiltered ? (summaryStats.totalAchats - summaryStats.totalVersements) : reste) > 0 ? 'À payer' : 'Soldé'}</p>
+                </motion.div>
               </div>
 
               <AnimatePresence>
@@ -817,32 +1100,56 @@ function ClientHistoryModal({ client, onClose }: { client: Client; onClose: () =
               {debts.length > 0 && (
                 <div>
                   <h3 className="text-sm font-black text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2"><AlertCircle size={14} className="text-red-500" />Dettes Client</h3>
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     {debts.map(debt => {
                       const remaining = debt.total_amount - (debt.paid_amount || 0);
                       const isPaid = remaining <= 0;
+                      const payments = debt.client_debt_payments || [];
                       return (
-                        <div key={debt.id} className={`flex items-center justify-between px-4 py-3 rounded-xl border ${
+                        <div key={debt.id} className={`rounded-xl border overflow-hidden ${
                           isPaid ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'
                         }`}>
-                          <div>
-                            <p className="font-bold text-gray-900 text-sm">{debt.invoice_number || 'N/A'}</p>
-                            <p className="text-xs text-gray-500">{new Date(debt.date).toLocaleDateString('fr-DZ')} · Total: {fmt(debt.total_amount)}</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <p className={`font-black text-sm ${isPaid ? 'text-emerald-700' : 'text-red-700'}`}>
-                                {isPaid ? '✅ Soldé' : fmt(remaining)}
-                              </p>
-                              {!isPaid && <p className="text-xs text-gray-500">Payé: {fmt(debt.paid_amount || 0)}</p>}
+                          {/* Debt Summary */}
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <div>
+                              <p className="font-bold text-gray-900 text-sm">{debt.invoice_number || 'N/A'}</p>
+                              <p className="text-xs text-gray-500">{new Date(debt.date).toLocaleDateString('fr-DZ')} · Total: {fmt(debt.total_amount)}</p>
                             </div>
-                            {!isPaid && (
-                              <button onClick={() => { setPayingDebt(debt); }}
-                                className="px-3 py-1.5 bg-gradient-to-br from-rose-500 to-pink-600 text-white rounded-lg text-xs font-bold shadow">
-                                Payer
-                              </button>
-                            )}
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className={`font-black text-sm ${isPaid ? 'text-emerald-700' : 'text-red-700'}`}>
+                                  {isPaid ? '✅ Soldé' : fmt(remaining)}
+                                </p>
+                                {!isPaid && <p className="text-xs text-gray-500">Payé: {fmt(debt.paid_amount || 0)}</p>}
+                              </div>
+                              {hasPermission('action_pay_debts') && !isPaid && (
+                                <button onClick={() => { setPayingDebt(debt); }}
+                                  className="px-3 py-1.5 bg-gradient-to-br from-rose-500 to-pink-600 text-white rounded-lg text-xs font-bold shadow">
+                                  Payer
+                                </button>
+                              )}
+                            </div>
                           </div>
+
+                          {/* Payment History */}
+                          {payments.length > 0 && (
+                            <div className="border-t border-current opacity-10 px-4 py-2 bg-black/5">
+                              <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Historique des Paiements</p>
+                              <div className="space-y-1">
+                                {payments.map((payment: any, idx: number) => (
+                                  <div key={idx} className="text-xs flex justify-between items-center py-1.5 px-2 bg-white/40 rounded">
+                                    <span className="text-gray-700 font-semibold">{fmt(payment.amount)}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-gray-500 italic">{new Date(payment.date).toLocaleDateString('fr-DZ')}</span>
+                                      <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                        Par: {payment.creator?.name || 'Utilisateur inconnu'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -890,6 +1197,7 @@ function ClientHistoryModal({ client, onClose }: { client: Client; onClose: () =
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
+  const { hasPermission } = useAuth();
   const { clients, addClient, updateClient, deleteClient, addAppointment } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | undefined>();
@@ -942,15 +1250,17 @@ export default function ClientsPage() {
           </h1>
           <p className="text-gray-600 font-semibold mt-1">Gestion complète des clients et relations commerciales</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => { setEditingClient(undefined); setShowForm(true); }}
-          className="flex items-center justify-center gap-2 bg-gradient-to-br from-rose-600 via-pink-600 to-fuchsia-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-rose-500/40 transition-all w-full md:w-auto"
-        >
-          <Plus size={20} />
-          Nouveau Client
-        </motion.button>
+        {hasPermission('action_create') && (
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { setEditingClient(undefined); setShowForm(true); }}
+            className="flex items-center justify-center gap-2 bg-gradient-to-br from-rose-600 via-pink-600 to-fuchsia-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-rose-500/40 transition-all w-full md:w-auto"
+          >
+            <Plus size={20} />
+            Nouveau Client
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Stats Cards */}
@@ -1110,53 +1420,50 @@ export default function ClientsPage() {
                            title="Historique">
                            <Clock size={16} />
                          </motion.button>
-                         <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => setViewingClient(client)}
-                          className="p-2 text-pink-600 bg-pink-50 rounded-lg hover:bg-pink-100 transition-all"
-                          title="Voir"
-                        >
-                          <Eye size={16} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => { setEditingClient(client); setShowForm(true); }}
-                          className="p-2 text-fuchsia-600 bg-fuchsia-50 rounded-lg hover:bg-fuchsia-100 transition-all"
-                          title="Modifier"
-                        >
-                          <Edit size={16} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => setHistoryApptClient(client)}
-                          className="p-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all"
-                          title="Historique des rendez-vous"
-                        >
-                          <Clock size={16} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => setAppointingClient(client)}
-                          className="p-2 text-rose-600 bg-rose-50 rounded-lg hover:bg-rose-100 transition-all"
-                          title="Rendez-vous"
-                        >
-                          <Calendar size={16} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => {
-                            if (window.confirm('Êtes-vous sûr ?')) handleDelete(client.id);
-                          }}
-                          className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={16} />
-                        </motion.button>
+                          <motion.button
+                           whileHover={{ scale: 1.1 }}
+                           whileTap={{ scale: 0.95 }}
+                           onClick={() => setViewingClient(client)}
+                           className="p-2 text-pink-600 bg-pink-50 rounded-lg hover:bg-pink-100 transition-all"
+                           title="Voir"
+                         >
+                           <Eye size={16} />
+                         </motion.button>
+                         {hasPermission('action_edit') && (
+                           <motion.button
+                             whileHover={{ scale: 1.1 }}
+                             whileTap={{ scale: 0.95 }}
+                             onClick={() => { setEditingClient(client); setShowForm(true); }}
+                             className="p-2 text-fuchsia-600 bg-fuchsia-50 rounded-lg hover:bg-fuchsia-100 transition-all"
+                             title="Modifier"
+                           >
+                             <Edit size={16} />
+                           </motion.button>
+                         )}
+                         {hasPermission('action_create') && (
+                           <motion.button
+                             whileHover={{ scale: 1.1 }}
+                             whileTap={{ scale: 0.95 }}
+                             onClick={() => setAppointingClient(client)}
+                             className="p-2 text-rose-600 bg-rose-50 rounded-lg hover:bg-rose-100 transition-all"
+                             title="Rendez-vous"
+                           >
+                             <Calendar size={16} />
+                           </motion.button>
+                         )}
+                         {hasPermission('action_delete') && (
+                           <motion.button
+                             whileHover={{ scale: 1.1 }}
+                             whileTap={{ scale: 0.95 }}
+                             onClick={() => {
+                               if (window.confirm('Êtes-vous sûr ?')) handleDelete(client.id);
+                             }}
+                             className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
+                             title="Supprimer"
+                           >
+                             <Trash2 size={16} />
+                           </motion.button>
+                         )}
                       </div>
                     </td>
                   </motion.tr>

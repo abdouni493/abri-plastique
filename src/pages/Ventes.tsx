@@ -11,12 +11,13 @@ import React, { useState, useEffect } from 'react';
 import {
   Plus, Search, Edit, Trash2, Printer, Eye, X,
   ShoppingCart, TrendingUp, Calendar, User, Check,
-  Filter, ChevronDown, Upload, Download, Info, CreditCard, UserPlus
+  Filter, ChevronDown, Upload, Download, Info, CreditCard, UserPlus, Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { uploadJustificatif, downloadImage } from '../lib/storage';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,8 +25,27 @@ interface SaleClient {
   id: string;
   name: string;
   phone: string;
+  email?: string;
   taxId?: string;
   wilaya?: string;
+  commune?: string;
+  activite?: string;
+  codePostal?: string;
+  address?: string;
+  notes?: string;
+  isSpecial?: boolean;
+  specialNote?: string;
+  ninNumber?: string;
+  rcNumber?: string;
+  artNumber?: string;
+  ifNumber?: string;
+  isNumber?: string;
+  compteBancaire?: string;
+  limitationCredit?: number;
+  soldeInitial?: number;
+  dateInitial?: string;
+  famille?: string;
+  sousFamille?: string;
 }
 
 interface SaleLine {
@@ -37,6 +57,9 @@ interface SaleLine {
   tva: number;
   totalHT: number;
   totalTTC: number;
+  nbreColis?: number;
+  colisage?: number;
+  barCode?: string;
 }
 
 interface Vente {
@@ -48,10 +71,14 @@ interface Vente {
   totalHT: number;
   totalTVA: number;
   totalTTC: number;
+  timbreAmount: number;
+  remiseActive: boolean;
+  remisePct: number;
+  remiseMontant: number;
   montantPaye: number;
   status: 'brouillon' | 'confirme' | 'envoye';
   notes: string;
-  paymentMode: 'especes' | 'virement' | 'cheque' | 'traite';
+  paymentMode: 'especes' | 'virement' | 'cheque' | 'traite' | 'a_terme';
   proof?: string;
 }
 
@@ -71,10 +98,16 @@ const mapVente = (row: any): Vente => ({
     tva: l.tva,
     totalHT: l.total_ht,
     totalTTC: l.total_ttc,
+    nbreColis: l.nbre_colis || 0,
+    colisage: l.colisage || 0,
   })),
   totalHT: row.total_ht,
   totalTVA: row.total_tva,
   totalTTC: row.total_ttc,
+  timbreAmount: row.timbre_amount || 0,
+  remiseActive: row.remise_active || false,
+  remisePct: row.remise_pct || 0,
+  remiseMontant: row.remise_montant || 0,
   montantPaye: row.montant_paye || 0,
   status: row.status,
   notes: row.notes || '',
@@ -86,8 +119,27 @@ const mapClient = (row: any): SaleClient => ({
   id: row.id,
   name: row.name,
   phone: row.phone || '',
+  email: row.email,
   taxId: row.tax_id,
   wilaya: row.wilaya,
+  commune: row.commune,
+  activite: row.activite,
+  codePostal: row.code_postal,
+  address: row.address,
+  notes: row.notes,
+  isSpecial: row.is_special || false,
+  specialNote: row.special_note,
+  ninNumber: row.nin_number,
+  rcNumber: row.rc_number,
+  artNumber: row.art_number,
+  ifNumber: row.if_number,
+  isNumber: row.is_number,
+  compteBancaire: row.compte_bancaire,
+  limitationCredit: row.limitation_credit,
+  soldeInitial: row.solde_initial,
+  dateInitial: row.date_initial,
+  famille: row.famille,
+  sousFamille: row.sous_famille,
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -176,6 +228,9 @@ function ProductSearch({ products, onSelect, placeholder = 'Rechercher un produi
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900 truncate">{p.designation}</p>
+                  {p.bar_code && (
+                    <p className="text-xs text-gray-400 font-mono">{p.bar_code}</p>
+                  )}
                   <p className="text-xs text-gray-400 font-semibold">TVA {p.tva}%</p>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -259,7 +314,10 @@ function EntitySearch({ entities, onSelect, placeholder, icon: Icon }: {
 // ─── Print Function ───────────────────────────────────────────────────────────
 
 function printVente(vente: Vente, client: SaleClient | undefined, settings?: any) {
-  const win = window.open('', '_self');
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  const win = iframe.contentWindow;
   if (!win) return;
 
   const lines = vente.lines.map((l, i) => `
@@ -267,6 +325,8 @@ function printVente(vente: Vente, client: SaleClient | undefined, settings?: any
       <td class="center">${i + 1}</td>
       <td><strong>${l.designation}</strong></td>
       <td class="center">${fmtNum(l.quantity)}</td>
+      ${l.nbreColis ? `<td class="center">${l.nbreColis}</td>` : '<td class="center">-</td>'}
+      ${l.colisage ? `<td class="center">${l.colisage}</td>` : '<td class="center">-</td>'}
       <td class="right">${fmt(l.prixUnitHT)}</td>
       <td class="center">${l.tva}%</td>
       <td class="right"><strong>${fmt(l.totalHT)}</strong></td>
@@ -275,7 +335,8 @@ function printVente(vente: Vente, client: SaleClient | undefined, settings?: any
   `).join('');
 
   const currentDate = new Date().toLocaleDateString('fr-DZ');
-  const reste = Math.max(0, vente.totalTTC - vente.montantPaye);
+  const totalWithTimbre = vente.totalTTC + vente.timbreAmount;
+  const reste = Math.max(0, totalWithTimbre - vente.montantPaye);
 
   const htmlTemplate = `
     <!DOCTYPE html>
@@ -360,8 +421,13 @@ function printVente(vente: Vente, client: SaleClient | undefined, settings?: any
             <div class="company-details">
               <div><label>Adresse</label><span>${settings?.address || 'Alger, Algérie'}</span></div>
               <div><label>Contact</label><span>${settings?.phone || '0799047248'}</span></div>
-              ${settings?.nif || 'Numéro d\'Identification Fiscale' ? `<div><label>NIF</label><span>${settings?.nif || 'Numéro d\'Identification Fiscale'}</span></div>` : ''}
-              ${settings?.rip || '00000 00000 0000000000 00' ? `<div><label>RIP</label><span>${settings?.rip || '00000 00000 0000000000 00'}</span></div>` : ''}
+              ${settings?.email ? `<div><label>Email</label><span>${settings.email}</span></div>` : ''}
+              ${settings?.nif ? `<div><label>NIF</label><span>${settings.nif}</span></div>` : ''}
+              ${settings?.rc ? `<div><label>RC</label><span>${settings.rc}</span></div>` : ''}
+              ${settings?.nis ? `<div><label>NIS</label><span>${settings.nis}</span></div>` : ''}
+              ${settings?.article ? `<div><label>Article</label><span>${settings.article}</span></div>` : ''}
+              ${settings?.rip ? `<div><label>RIP</label><span>${settings.rip}</span></div>` : ''}
+              ${settings?.activite ? `<div><label>Activité</label><span>${settings.activite}</span></div>` : ''}
             </div>
           </div>
         </div>
@@ -398,6 +464,8 @@ function printVente(vente: Vente, client: SaleClient | undefined, settings?: any
               <th class="center" style="width: 5%;">#</th>
               <th style="width: 35%;">Désignation</th>
               <th class="center" style="width: 10%;">Quantité</th>
+              <th class="center" style="width: 8%;">Nbre Colis</th>
+              <th class="center" style="width: 8%;">Colisage</th>
               <th class="right" style="width: 15%;">P.U HT</th>
               <th class="center" style="width: 8%;">TVA</th>
               <th class="right" style="width: 13%;">Total HT</th>
@@ -411,11 +479,18 @@ function printVente(vente: Vente, client: SaleClient | undefined, settings?: any
           <div class="totals-box">
             <div class="row"><span>Total HT:</span><span>${fmt(vente.totalHT)}</span></div>
             <div class="row"><span>Total TVA:</span><span>${fmt(vente.totalTVA)}</span></div>
-            <div class="row total-row"><span>TOTAL TTC:</span><span>${fmt(vente.totalTTC)}</span></div>
+            <div class="row total-row"><span>Sous-total TTC:</span><span>${fmt(vente.totalTTC)}</span></div>
+            ${vente.remiseActive && vente.remiseMontant > 0 ? `<div class="row" style="color: #ea580c;"><span>Remise (${vente.remisePct}%):</span><span>- ${fmt(vente.remiseMontant)}</span></div>` : ''}
+            ${vente.timbreAmount > 0 ? `<div class="row" style="color: #059669;"><span>Timbre (Taxe):</span><span>+ ${fmt(vente.timbreAmount)}</span></div>` : ''}
+            <div class="row total-row"><span>TOTAL TTC:</span><span>${fmt((vente.totalTTC - (vente.remiseMontant || 0) + (vente.timbreAmount || 0)))}</span></div>
           </div>
         </div>
         
         <div class="payment-info">
+          <div class="payment-box">
+            <label>Mode Paiement</label>
+            <div class="value">${vente.paymentMode === 'a_terme' ? 'À terme' : vente.paymentMode === 'especes' ? 'Espèces' : vente.paymentMode === 'virement' ? 'Virement Bancaire' : vente.paymentMode === 'cheque' ? 'Chèque' : vente.paymentMode === 'traite' ? 'Traite' : vente.paymentMode}</div>
+          </div>
           <div class="payment-box">
             <label>Montant Paye</label>
             <div class="value">${fmt(vente.montantPaye)}</div>
@@ -472,6 +547,12 @@ function printVente(vente: Vente, client: SaleClient | undefined, settings?: any
 
   win.document.write(htmlTemplate);
   win.document.close();
+  win.onafterprint = () => {
+    document.body.removeChild(iframe);
+    window.location.reload();
+  };
+  win.focus();
+  win.print();
 }
 
 // ─── View Modal ───────────────────────────────────────────────────────────────
@@ -532,6 +613,8 @@ function ViewModal({ vente, clients, onClose, settings }: {
                     <tr className="bg-indigo-50/80 border-b border-indigo-100">
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Désignation</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Qté</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Nbre Colis</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Colisage</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">P.U HT</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">TVA</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Total TTC</th>
@@ -544,6 +627,8 @@ function ViewModal({ vente, clients, onClose, settings }: {
                           <p className="font-bold text-gray-900">{line.designation}</p>
                         </td>
                         <td className="px-4 py-3 text-center font-semibold text-gray-600">{fmtNum(line.quantity)}</td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-600">{line.nbreColis || '-'}</td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-600">{line.colisage || '-'}</td>
                         <td className="px-4 py-3 text-right text-gray-600">{fmt(line.prixUnitHT)}</td>
                         <td className="px-4 py-3 text-center">
                           <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold">{line.tva}%</span>
@@ -565,9 +650,21 @@ function ViewModal({ vente, clients, onClose, settings }: {
                     <span>Total TVA:</span>
                     <span>{fmt(vente.totalTVA)}</span>
                   </div>
+                  {vente.remiseActive && (
+                    <div className="flex justify-between text-sm font-semibold text-rose-600">
+                      <span>Remise (-{vente.remisePct}%):</span>
+                      <span>-{fmt(vente.remiseMontant)}</span>
+                    </div>
+                  )}
+                  {vente.timbreAmount > 0 && (
+                    <div className="flex justify-between text-sm font-semibold text-amber-600">
+                      <span>Timbre Fiscal:</span>
+                      <span>+{fmt(vente.timbreAmount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-base font-black text-indigo-700 border-t border-indigo-200 pt-2">
-                    <span>TOTAL TTC:</span>
-                    <span>{fmt(vente.totalTTC)}</span>
+                    <span>TOTAL FINAL:</span>
+                    <span>{fmt(vente.totalTTC - (vente.remiseMontant || 0) + (vente.timbreAmount || 0))}</span>
                   </div>
                 </div>
               </div>
@@ -617,7 +714,12 @@ function NewClientModal({ onClose, onCreated }: {
     activite: '',
     codePostal: '',
     address: '',
-    notes: ''
+    notes: '',
+    isSpecial: false,
+    specialNote: '',
+    ninNumber: '', rcNumber: '', artNumber: '', ifNumber: '', isNumber: '',
+    compteBancaire: '', limitationCredit: 0, soldeInitial: 0, dateInitial: '',
+    famille: '', sousFamille: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -625,14 +727,39 @@ function NewClientModal({ onClose, onCreated }: {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      const newClient: SaleClient = {
-        id: genId(),
+      const { data, error } = await supabase.from('clients').insert({
         name: form.name,
         phone: form.phone,
-        taxId: form.taxId,
+        email: form.email,
+        tax_id: form.taxId,
         wilaya: form.wilaya,
-      };
-      onCreated(newClient);
+        commune: form.commune,
+        activite: form.activite,
+        code_postal: form.codePostal,
+        address: form.address,
+        notes: form.notes,
+        is_special: form.isSpecial,
+        special_note: form.specialNote,
+        nin_number: form.ninNumber,
+        rc_number: form.rcNumber,
+        art_number: form.artNumber,
+        if_number: form.ifNumber,
+        is_number: form.isNumber,
+        compte_bancaire: form.compteBancaire,
+        limitation_credit: form.limitationCredit,
+        solde_initial: form.soldeInitial,
+        date_initial: form.dateInitial || null,
+        famille: form.famille,
+        sous_famille: form.sousFamille,
+      }).select().single();
+
+      if (error) throw error;
+      if (data) {
+        onCreated(mapClient(data));
+      }
+    } catch (err: any) {
+      console.error('Error creating client:', err);
+      alert('Erreur lors de la création du client: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -746,18 +873,97 @@ function NewClientModal({ onClose, onCreated }: {
             </div>
           </div>
 
-          {/* Tax Info */}
+          {/* Catégorisation */}
           <div>
-            <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-widest mb-4 pb-2 border-b border-indigo-200">Identification Fiscale</h3>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">NIF</label>
-              <input
-                type="text"
-                value={form.taxId}
-                onChange={e => setForm(f => ({ ...f, taxId: e.target.value }))}
-                placeholder="Numéro d'impôt"
-                className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
-              />
+            <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-widest mb-4 pb-2 border-b border-indigo-200">Catégorisation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Famille</label>
+                <input
+                  type="text"
+                  value={form.famille}
+                  onChange={e => setForm(f => ({ ...f, famille: e.target.value }))}
+                  placeholder="Famille"
+                  className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Sous-Famille</label>
+                <input
+                  type="text"
+                  value={form.sousFamille}
+                  onChange={e => setForm(f => ({ ...f, sousFamille: e.target.value }))}
+                  placeholder="Sous-famille"
+                  className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Identification Fiscale */}
+          <div>
+            <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-widest mb-4 pb-2 border-b border-indigo-200">Identification Fiscale & Finance</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-3">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">NIF</label>
+                <input
+                  type="text"
+                  value={form.taxId}
+                  onChange={e => setForm(f => ({ ...f, taxId: e.target.value }))}
+                  placeholder="Numéro d'impôt"
+                  className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">N° NIN</label>
+                <input value={form.ninNumber || ''} onChange={e => setForm(f => ({ ...f, ninNumber: e.target.value }))}
+                  placeholder="Numéro NIN" className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">N° RC</label>
+                <input value={form.rcNumber || ''} onChange={e => setForm(f => ({ ...f, rcNumber: e.target.value }))}
+                  placeholder="RC" className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">N° ART</label>
+                <input value={form.artNumber || ''} onChange={e => setForm(f => ({ ...f, artNumber: e.target.value }))}
+                  placeholder="Article" className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">N° IF</label>
+                <input value={form.ifNumber || ''} onChange={e => setForm(f => ({ ...f, ifNumber: e.target.value }))}
+                  placeholder="N° IF" className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">N° IS</label>
+                <input value={form.isNumber || ''} onChange={e => setForm(f => ({ ...f, isNumber: e.target.value }))}
+                  placeholder="N° IS" className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Compte Bancaire</label>
+                <input value={form.compteBancaire || ''} onChange={e => setForm(f => ({ ...f, compteBancaire: e.target.value }))}
+                  placeholder="RIB / Compte" className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Limitation de Crédit</label>
+                <input type="number" min="0" value={form.limitationCredit || 0}
+                  onChange={e => setForm(f => ({ ...f, limitationCredit: Number(e.target.value) }))}
+                  className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Solde Initial</label>
+                <input type="number" value={form.soldeInitial || 0}
+                  onChange={e => setForm(f => ({ ...f, soldeInitial: Number(e.target.value) }))}
+                  className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Date Initial</label>
+                <input type="date" value={form.dateInitial || ''}
+                  onChange={e => setForm(f => ({ ...f, dateInitial: e.target.value }))}
+                  className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none" />
+              </div>
             </div>
           </div>
 
@@ -772,6 +978,34 @@ function NewClientModal({ onClose, onCreated }: {
               className="w-full bg-white border border-indigo-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none resize-none"
               placeholder="Ajouter des notes..."
             />
+          </div>
+
+          {/* Special Client */}
+          <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl p-6 border border-amber-200">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="isSpecial"
+                checked={form.isSpecial || false}
+                onChange={e => setForm(f => ({ ...f, isSpecial: e.target.checked }))}
+                className="w-4 h-4 rounded-lg border-2 border-amber-300 cursor-pointer accent-amber-500"
+              />
+              <label htmlFor="isSpecial" className="font-bold text-sm text-amber-900 cursor-pointer">
+                ⭐ Client Spécial (prix négociable)
+              </label>
+            </div>
+            {form.isSpecial && (
+              <div className="mt-4">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Note sur ce client spécial</label>
+                <textarea
+                  value={form.specialNote || ''}
+                  onChange={e => setForm(f => ({ ...f, specialNote: e.target.value }))}
+                  rows={2}
+                  className="w-full bg-white border border-amber-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-4 focus:ring-amber-500/30 focus:border-amber-500 outline-none resize-none"
+                  placeholder="Ex: Conditions spéciales de tarification..."
+                />
+              </div>
+            )}
           </div>
         </div>
         <div className="px-8 py-5 border-t border-gray-100 bg-gray-50 flex gap-3">
@@ -800,10 +1034,11 @@ const VenteForm: React.FC<{
   vente?: Vente;
   clients: SaleClient[];
   products: any[];
+  timbres: any[];
   generateNumero: (prefix: string, docType: string) => Promise<string>;
   onClose: () => void;
   onSave: (v: Vente) => void;
-}> = function({ vente, clients: initialClients, products, generateNumero, onClose, onSave }) {
+}> = function({ vente, clients: initialClients, products, timbres, generateNumero, onClose, onSave }) {
   const isNew = !vente;
   const [clients, setClients] = useState<SaleClient[]>(initialClients);
   const [showNewClient, setShowNewClient] = useState(false);
@@ -818,13 +1053,17 @@ const VenteForm: React.FC<{
     totalHT: 0,
     totalTVA: 0,
     totalTTC: 0,
+    timbreAmount: 0,
+    remiseActive: false,
+    remisePct: 0,
+    remiseMontant: 0,
     montantPaye: 0,
     status: 'brouillon' as const,
     notes: '',
     paymentMode: 'especes' as const,
   });
 
-  const resteAPayer = Math.max(0, form.totalTTC - montantPaye);
+  const resteAPayer = Math.max(0, (form.totalTTC - form.remiseMontant + form.timbreAmount) - montantPaye);
 
   // Generate numero for new ventes
   useEffect(() => {
@@ -838,7 +1077,17 @@ const VenteForm: React.FC<{
   const recalc = (lines: SaleLine[]) => {
     const totalHT = lines.reduce((s, l) => s + l.totalHT, 0);
     const totalTVA = lines.reduce((s, l) => s + (l.totalHT * l.tva / 100), 0);
-    return { totalHT, totalTVA, totalTTC: totalHT + totalTVA };
+    const totalTTC = totalHT + totalTVA;
+    
+    // Find matching active timbre - apply AFTER remise
+    let timbreAmount = 0;
+    const totalAfterRemise = form.remiseActive ? totalTTC - (totalTTC * form.remisePct / 100) : totalTTC;
+    const activeTimbre = timbres.find(t => t.isActive && totalAfterRemise >= t.minAmount && totalAfterRemise <= t.maxAmount);
+    if (activeTimbre) {
+      timbreAmount = totalAfterRemise * activeTimbre.percentage / 100;
+    }
+    
+    return { totalHT, totalTVA, totalTTC, timbreAmount };
   };
 
   const addProduct = (p: any) => {
@@ -851,6 +1100,7 @@ const VenteForm: React.FC<{
       tva: p.tva,
       totalHT: p.prix_vente,
       totalTTC: p.prix_vente * (1 + p.tva / 100),
+      barCode: p.bar_code,
     };
     const newLines = [...form.lines, line];
     setForm(f => ({ ...f, lines: newLines, ...recalc(newLines) }));
@@ -937,6 +1187,7 @@ const VenteForm: React.FC<{
                 <option value="virement">Virement Bancaire</option>
                 <option value="cheque">Chèque</option>
                 <option value="traite">Traite</option>
+                <option value="a_terme">À terme</option>
               </select>
             </div>
           </div>
@@ -960,12 +1211,38 @@ const VenteForm: React.FC<{
               icon={User}
             />
             {form.clientId && (
-              <div className="mt-2 px-3 py-2 bg-indigo-50 rounded-xl flex items-center justify-between">
-                <span className="text-sm font-bold text-indigo-700">{clients.find(c => c.id === form.clientId)?.name}</span>
-                <button onClick={() => setForm(f => ({ ...f, clientId: null }))} className="text-indigo-400 hover:text-red-500">
-                  <X size={14} />
-                </button>
-              </div>
+              (() => {
+                const selectedClient = clients.find(c => c.id === form.clientId);
+                return (
+                  <div className="mt-2 space-y-2">
+                    <div className={`px-3 py-2 rounded-xl flex items-center justify-between ${
+                      selectedClient?.isSpecial
+                        ? 'bg-amber-50 border border-amber-200'
+                        : 'bg-indigo-50'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-bold ${selectedClient?.isSpecial ? 'text-amber-700' : 'text-indigo-700'}`}>
+                          {selectedClient?.isSpecial && '⭐ '}
+                          {selectedClient?.name}
+                        </span>
+                        {selectedClient?.isSpecial && (
+                          <span className="inline-block px-2 py-1 bg-amber-100 text-amber-700 text-[10px] font-black rounded-full uppercase tracking-wider">
+                            Spécial
+                          </span>
+                        )}
+                      </div>
+                      <button onClick={() => setForm(f => ({ ...f, clientId: null }))} className="text-indigo-400 hover:text-red-500">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    {selectedClient?.isSpecial && selectedClient?.specialNote && (
+                      <div className="px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800 font-semibold italic">
+                        📝 {selectedClient.specialNote}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
             )}
             <AnimatePresence>
               {showNewClient && (
@@ -992,8 +1269,11 @@ const VenteForm: React.FC<{
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gradient-to-r from-indigo-50/80 to-blue-50/50 border-b border-indigo-100">
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Code Barre</th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Désignation</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Quantité</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">Nbre Colis</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">Colisage</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">P.U HT</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">TVA %</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">Total TTC</th>
@@ -1003,8 +1283,11 @@ const VenteForm: React.FC<{
                   <tbody className="divide-y divide-indigo-100/50">
                     {form.lines.map(line => (
                       <tr key={line.id} className="hover:bg-white/60 transition-all">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                          {line.barCode || '—'}
+                        </td>
                         <td className="px-4 py-3">
-                          <p className="font-bold text-gray-900">{line.designation}</p>
+                          <div className="font-medium text-sm text-gray-900">{line.designation}</div>
                         </td>
                         <td className="px-4 py-3">
                           <input
@@ -1019,10 +1302,44 @@ const VenteForm: React.FC<{
                           <input
                             type="number"
                             min="0"
-                            value={line.prixUnitHT}
-                            onChange={e => updateLine(line.id, 'prixUnitHT', Number(e.target.value))}
-                            className="w-full text-right bg-white border border-indigo-200 rounded-lg py-1.5 px-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
+                            value={line.nbreColis || ''}
+                            onChange={e => updateLine(line.id, 'nbreColis', Number(e.target.value) || 0)}
+                            className="w-full text-center bg-white border border-indigo-200 rounded-lg py-1.5 px-2 text-xs font-bold focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
                           />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            value={line.colisage || ''}
+                            onChange={e => updateLine(line.id, 'colisage', Number(e.target.value) || 0)}
+                            className="w-full text-center bg-white border border-indigo-200 rounded-lg py-1.5 px-2 text-xs font-bold focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          {(() => {
+                            const currentClient = clients.find(c => c.id === form.clientId);
+                            const isClientSpecial = currentClient?.isSpecial || false;
+                            return (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={line.prixUnitHT}
+                                  readOnly={!isClientSpecial}
+                                  onChange={isClientSpecial ? (e => updateLine(line.id, 'prixUnitHT', Number(e.target.value))) : undefined}
+                                  className={`flex-1 text-right border border-indigo-200 rounded-lg py-1.5 px-2 text-sm font-bold outline-none transition-all ${
+                                    isClientSpecial
+                                      ? 'bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 cursor-text'
+                                      : 'bg-gray-100 cursor-not-allowed text-gray-600'
+                                  }`}
+                                />
+                                {!isClientSpecial && (
+                                  <Lock size={12} className="text-gray-400 flex-shrink-0" />
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3">
                           <input
@@ -1057,9 +1374,57 @@ const VenteForm: React.FC<{
                     <span>{fmt(form.totalTVA)}</span>
                   </div>
                   <div className="flex justify-between text-base font-black text-indigo-700 border-t border-indigo-200 pt-2">
-                    <span>TOTAL TTC:</span>
+                    <span>Sous-total TTC:</span>
                     <span>{fmt(form.totalTTC)}</span>
                   </div>
+
+                  {/* Remise Section */}
+                  <div className="flex items-center gap-4 py-3 px-3 bg-orange-50 rounded-lg border border-orange-200">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.remiseActive}
+                        onChange={e => setForm(f => ({ ...f, remiseActive: e.target.checked }))}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                      <span className="font-bold text-sm">Remise</span>
+                    </label>
+                    {form.remiseActive && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={form.remisePct}
+                          onChange={e => {
+                            const pct = Number(e.target.value);
+                            setForm(f => ({
+                              ...f,
+                              remisePct: pct,
+                              remiseMontant: (f.totalTTC * pct) / 100,
+                            }));
+                          }}
+                          className="w-16 border rounded-lg px-2 py-1 text-sm font-bold"
+                        />
+                        <span className="text-sm font-bold text-gray-500">%</span>
+                        <span className="text-sm text-red-600 font-bold">
+                          - {fmt(form.remiseMontant)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`flex justify-between text-lg font-black border-t-2 border-indigo-300 pt-2 ${form.remiseActive ? 'text-emerald-700' : 'text-indigo-700'}`}>
+                    <span>TOTAL FINAL = TTC - Remise + Timbre:</span>
+                    <span>{fmt(form.totalTTC - form.remiseMontant)}</span>
+                  </div>
+
+                  {form.timbreAmount > 0 && (
+                    <div className="flex justify-between text-sm font-semibold text-emerald-700 bg-emerald-50 -mx-4 -mb-4 px-4 py-3 rounded-b-2xl border-t border-emerald-200">
+                      <span>Timbre (Taxe):</span>
+                      <span>+ {fmt(form.timbreAmount)}</span>
+                    </div>
+                  )}
                   {/* Payment section */}
                   <div className="mt-4 pt-4 border-t-2 border-dashed border-indigo-300 space-y-3">
                     <div className="flex items-center justify-between">
@@ -1068,9 +1433,9 @@ const VenteForm: React.FC<{
                         <input
                           type="number"
                           min="0"
-                          max={form.totalTTC}
+                          max={form.totalTTC + form.timbreAmount}
                           value={montantPaye}
-                          onChange={e => setMontantPaye(Math.min(form.totalTTC, Math.max(0, Number(e.target.value))))}
+                          onChange={e => setMontantPaye(Math.min(form.totalTTC + form.timbreAmount, Math.max(0, Number(e.target.value))))}
                           className="w-full text-right bg-white border-2 border-indigo-400 rounded-xl py-2 px-3 text-sm font-black text-indigo-700 focus:ring-4 focus:ring-indigo-500/20 outline-none"
                         />
                       </div>
@@ -1295,7 +1660,8 @@ function VentePayDebtModal({ vente, client, onClose, onPaid }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function VentesPage() {
-  const { settings } = useApp();
+  const { settings, timbres } = useApp();
+  const { hasPermission } = useAuth();
   const [ventes, setVentes] = useState<Vente[]>([]);
   const [clients, setClients] = useState<SaleClient[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -1344,8 +1710,8 @@ export default function VentesPage() {
     try {
       const [ventesRes, clientsRes, productsRes] = await Promise.all([
         supabase.from('ventes').select('*, vente_lines(*)').order('date', { ascending: false }),
-        supabase.from('clients').select('id, name, phone, tax_id, wilaya').order('name'),
-        supabase.from('products').select('id, designation, ref_product, prix_vente, tva, current_quantity').eq('is_active', true).order('designation'),
+        supabase.from('clients').select('*').order('name'),
+        supabase.from('products').select('id, designation, ref_product, bar_code, prix_vente, tva, current_quantity').eq('is_active', true).order('designation'),
       ]);
       if (ventesRes.data) setVentes(ventesRes.data.map(mapVente));
       if (clientsRes.data) setClients(clientsRes.data.map(mapClient));
@@ -1366,7 +1732,7 @@ export default function VentesPage() {
 
   const handleSave = async (vente: Vente) => {
     try {
-      const resteAPayer = Math.max(0, vente.totalTTC - (vente.montantPaye || 0));
+      const resteAPayer = Math.max(0, (vente.totalTTC - (vente.remiseMontant || 0) + (vente.timbreAmount || 0)) - (vente.montantPaye || 0));
 
       if (editingVente) {
         // Update existing vente
@@ -1377,10 +1743,14 @@ export default function VentesPage() {
           total_ht: vente.totalHT,
           total_tva: vente.totalTVA,
           total_ttc: vente.totalTTC,
+          timbre_amount: vente.timbreAmount || 0,
           montant_paye: vente.montantPaye || 0,
           status: vente.status,
           payment_mode: vente.paymentMode,
           notes: vente.notes,
+          remise_active: vente.remiseActive,
+          remise_pct: vente.remisePct,
+          remise_montant: vente.remiseMontant,
         }).eq('id', vente.id);
 
         // Delete old lines and insert new ones
@@ -1392,6 +1762,8 @@ export default function VentesPage() {
           quantity: l.quantity,
           prix_unit_ht: l.prixUnitHT,
           tva: l.tva,
+          nbre_colis: l.nbreColis || 0,
+          colisage: l.colisage || 0,
         }));
         if (updatedLines.length > 0) {
           await supabase.from('vente_lines').insert(updatedLines);
@@ -1406,10 +1778,14 @@ export default function VentesPage() {
           total_ht: vente.totalHT,
           total_tva: vente.totalTVA,
           total_ttc: vente.totalTTC,
+          timbre_amount: vente.timbreAmount || 0,
           montant_paye: vente.montantPaye || 0,
           status: vente.status,
           payment_mode: vente.paymentMode,
           notes: vente.notes,
+          remise_active: vente.remiseActive,
+          remise_pct: vente.remisePct,
+          remise_montant: vente.remiseMontant,
         }).select().single();
         if (insertErr) throw insertErr;
 
@@ -1422,6 +1798,8 @@ export default function VentesPage() {
             quantity: l.quantity,
             prix_unit_ht: l.prixUnitHT,
             tva: l.tva,
+            nbre_colis: l.nbreColis || 0,
+            colisage: l.colisage || 0,
           }));
           if (lines.length > 0) {
             const { error: linesErr } = await supabase.from('vente_lines').insert(lines);
@@ -1489,15 +1867,17 @@ export default function VentesPage() {
           </h1>
           <p className="text-gray-600 font-semibold mt-1">Gestion complète des factures de vente et encaissements</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => { setEditingVente(undefined); setShowForm(true); }}
-          className="flex items-center justify-center gap-2 bg-gradient-to-br from-indigo-600 via-blue-600 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-indigo-500/40 transition-all w-full md:w-auto"
-        >
-          <Plus size={20} />
-          Nouvelle Vente
-        </motion.button>
+        {hasPermission('action_create') && (
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { setEditingVente(undefined); setShowForm(true); }}
+            className="flex items-center justify-center gap-2 bg-gradient-to-br from-indigo-600 via-blue-600 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-indigo-500/40 transition-all w-full md:w-auto"
+          >
+            <Plus size={20} />
+            Nouvelle Vente
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Stats Cards */}
@@ -1615,6 +1995,7 @@ export default function VentesPage() {
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">N° Facture</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Client</th>
                   <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Articles</th>
+                  <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Timbre</th>
                   <th className="px-6 py-4 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Montant TTC</th>
                   <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Statut</th>
                   <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Date</th>
@@ -1640,8 +2021,22 @@ export default function VentesPage() {
                         {vente.lines.length}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-center">
+                      {vente.timbreAmount > 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-black uppercase">
+                          <Check size={10} /> {fmt(vente.timbreAmount)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-right font-bold text-indigo-700">
-                      {fmt(vente.totalTTC)}
+                      <div className="flex flex-col items-end">
+                        <span>{fmt(vente.totalTTC - (vente.remiseMontant || 0) + (vente.timbreAmount || 0))}</span>
+                        {vente.remiseActive && (
+                          <span className="text-[10px] text-rose-500 font-bold">Remise -{vente.remisePct}%</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-center">
                       {(() => {
@@ -1676,16 +2071,18 @@ export default function VentesPage() {
                         >
                           <Eye size={16} />
                         </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => { setEditingVente(vente); setShowForm(true); }}
-                          className="p-2 text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-all"
-                          title="Modifier"
-                        >
-                          <Edit size={16} />
-                        </motion.button>
-                        {getVentePaymentStatus(vente) === 'dette' && (
+                        {hasPermission('action_edit') && (
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => { setEditingVente(vente); setShowForm(true); }}
+                            className="p-2 text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-all"
+                            title="Modifier"
+                          >
+                            <Edit size={16} />
+                          </motion.button>
+                        )}
+                        {hasPermission('action_pay_debts') && getVentePaymentStatus(vente) === 'dette' && (
                           <motion.button
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.95 }}
@@ -1696,26 +2093,28 @@ export default function VentesPage() {
                             <CreditCard size={16} />
                           </motion.button>
                         )}
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => printVente(vente, clients.find(c => c.id === vente.clientId), settings)}
-                          className="p-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all"
-                          title="Imprimer"
-                        >
-                          <Printer size={16} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => {
-                            if (window.confirm('Êtes-vous sûr ?')) handleDelete(vente.id);
-                          }}
-                          className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={16} />
-                        </motion.button>
+                        {hasPermission('action_print') && (
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => printVente(vente, clients.find(c => c.id === vente.clientId), settings)}
+                            className="p-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all"
+                            title="Imprimer"
+                          >
+                            <Printer size={16} />
+                          </motion.button>
+                        )}
+                        {hasPermission('action_delete') && (
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleDelete(vente.id)}
+                            className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={16} />
+                          </motion.button>
+                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -1733,6 +2132,7 @@ export default function VentesPage() {
             vente={editingVente}
             clients={clients}
             products={products}
+            timbres={timbres}
             generateNumero={generateNumero}
             onClose={() => { setShowForm(false); setEditingVente(undefined); }}
             onSave={handleSave}

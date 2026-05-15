@@ -11,11 +11,13 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { formatAmount, cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { uploadJustificatif, downloadImage } from '../lib/storage';
 
 const Banque = () => {
+  const { hasPermission } = useAuth();
   const { t, isRTL } = useLanguage();
   const { transactions, banks, addTransaction, deleteTransaction, updateTransaction, clients, suppliers, loading, settings } = useApp();
   
@@ -624,15 +626,17 @@ const Banque = () => {
           </h1>
           <p className="text-gray-600 font-semibold mt-1">Gestion complète de vos comptes bancaires et flux de trésorerie</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setShowModal(true)}
-          className="flex items-center justify-center gap-2 bg-gradient-to-br from-indigo-600 via-blue-600 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-indigo-500/40 transition-all w-full md:w-auto"
-        >
-          <Plus size={20} />
-          {t('new_transaction')}
-        </motion.button>
+        {hasPermission('action_create') && (
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowModal(true)}
+            className="flex items-center justify-center gap-2 bg-gradient-to-br from-indigo-600 via-blue-600 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:shadow-indigo-500/40 transition-all w-full md:w-auto"
+          >
+            <Plus size={20} />
+            {t('new_transaction')}
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Bank Cards Grid */}
@@ -647,6 +651,9 @@ const Banque = () => {
           const inTotal = bankTransactions.filter(t => t.type === 'in').reduce((acc, t) => acc + t.amount, 0);
           const outTotal = bankTransactions.filter(t => t.type === 'out').reduce((acc, t) => acc + t.amount, 0);
           
+          // Compute balance from transactions as the source of truth
+          const computedBalance = bankTransactions.reduce((acc, t) => acc + (t.type === 'in' ? t.amount : -t.amount), 0);
+
           return (
             <motion.div 
               key={bank.id}
@@ -703,9 +710,9 @@ const Banque = () => {
                       "text-2xl font-black",
                       selectedBankId === bank.id 
                         ? "text-white" 
-                        : bank.balance >= 0 ? "text-indigo-600" : "text-red-600"
+                        : computedBalance >= 0 ? "text-indigo-600" : "text-red-600"
                    )}>
-                      {formatAmount(bank.balance)}
+                      {formatAmount(computedBalance)}
                    </p>
                 </div>
 
@@ -766,15 +773,17 @@ const Banque = () => {
         <div className="p-6 md:p-8 border-b border-indigo-100/50 bg-gradient-to-r from-indigo-50/50 to-blue-50/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
            <h3 className="text-xl font-bold text-gray-900">Opérations Bancaires</h3>
            <div className="flex items-center gap-3">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handlePrintHistory}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 rounded-xl text-indigo-600 hover:bg-indigo-50 font-bold text-xs uppercase tracking-wider transition-all shadow-sm"
-              >
-                <Printer size={16} />
-                {t('print')}
-              </motion.button>
+              {hasPermission('action_print') && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handlePrintHistory}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 rounded-xl text-indigo-600 hover:bg-indigo-50 font-bold text-xs uppercase tracking-wider transition-all shadow-sm"
+                >
+                  <Printer size={16} />
+                  {t('print')}
+                </motion.button>
+              )}
            </div>
         </div>
 
@@ -843,37 +852,43 @@ const Banque = () => {
                        >
                           <Info size={16} />
                        </motion.button>
-                       <motion.button
-                         whileHover={{ scale: 1.1 }}
-                         whileTap={{ scale: 0.95 }}
-                         onClick={() => handleEdit(item)}
-                         className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all"
-                         title="Modifier"
-                       >
-                          <Edit size={16} />
-                       </motion.button>
-                       <motion.button
-                         whileHover={{ scale: 1.1 }}
-                         whileTap={{ scale: 0.95 }}
-                         onClick={() => handlePrint(item)}
-                         className="p-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all"
-                         title="Imprimer"
-                       >
-                          <Printer size={16} />
-                       </motion.button>
-                       <motion.button
-                         whileHover={{ scale: 1.1 }}
-                         whileTap={{ scale: 0.95 }}
-                         onClick={() => {
-                           if(window.confirm('Confirmer la suppression ?')) {
-                             deleteTransaction(item.id);
-                           }
-                         }}
-                         className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
-                         title="Supprimer"
-                       >
-                          <Trash2 size={16} />
-                       </motion.button>
+                       {hasPermission('action_edit') && (
+                         <motion.button
+                           whileHover={{ scale: 1.1 }}
+                           whileTap={{ scale: 0.95 }}
+                           onClick={() => handleEdit(item)}
+                           className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all"
+                           title="Modifier"
+                         >
+                            <Edit size={16} />
+                         </motion.button>
+                       )}
+                       {hasPermission('action_print') && (
+                         <motion.button
+                           whileHover={{ scale: 1.1 }}
+                           whileTap={{ scale: 0.95 }}
+                           onClick={() => handlePrint(item)}
+                           className="p-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all"
+                           title="Imprimer"
+                         >
+                            <Printer size={16} />
+                         </motion.button>
+                       )}
+                       {hasPermission('action_delete') && (
+                         <motion.button
+                           whileHover={{ scale: 1.1 }}
+                           whileTap={{ scale: 0.95 }}
+                           onClick={() => {
+                             if(window.confirm('Confirmer la suppression ?')) {
+                               deleteTransaction(item.id);
+                             }
+                           }}
+                           className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
+                           title="Supprimer"
+                         >
+                            <Trash2 size={16} />
+                         </motion.button>
+                       )}
                     </div>
                   </td>
                 </motion.tr>

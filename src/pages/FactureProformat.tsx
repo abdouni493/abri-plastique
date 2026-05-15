@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Plus, Search, Filter, Edit, Trash2, Printer, Eye, X, FileText,
-  ChevronDown, Package, User, Building2, Check, AlertCircle, ArrowRight
+  ChevronDown, Package, User, Building2, Check, AlertCircle, ArrowRight, Truck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
@@ -31,9 +31,16 @@ interface Client {
   id: string;
   name: string;
   phone?: string;
+  email?: string;
   taxId?: string;
   wilaya?: string;
   commune?: string;
+  activite?: string;
+  codePostal?: string;
+  address?: string;
+  notes?: string;
+  isSpecial?: boolean;
+  specialNote?: string;
 }
 
 interface BonLine {
@@ -44,6 +51,8 @@ interface BonLine {
   tva: number;
   totalHT: number;
   totalTTC: number;
+  nbreColis?: number;
+  colisage?: number;
 }
 
 interface FactureProformat {
@@ -56,9 +65,13 @@ interface FactureProformat {
   totalHT: number;
   totalTVA: number;
   totalTTC: number;
+  timbreAmount: number;
+  remiseActive: boolean;
+  remisePct: number;
+  remiseMontant: number;
   status: 'brouillon' | 'confirme' | 'envoye' | 'annule';
   notes: string;
-  paymentMode: 'especes' | 'virement' | 'cheque' | 'traite';
+  paymentMode: 'especes' | 'virement' | 'cheque' | 'traite' | 'a_terme';
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -235,6 +248,10 @@ const FactureForm: React.FC<{
       totalHT: 0,
       totalTVA: 0,
       totalTTC: 0,
+      timbreAmount: 0,
+      remiseActive: false,
+      remisePct: 0,
+      remiseMontant: 0,
       status: 'brouillon' as const,
       notes: '',
       paymentMode: 'virement' as const,
@@ -354,11 +371,20 @@ const FactureForm: React.FC<{
                 icon={User}
               />
               {form.client && (
-                <div className="mt-2 px-3 py-2 bg-amber-50 rounded-xl flex items-center justify-between">
-                  <span className="text-sm font-bold text-amber-700">{form.client.name}</span>
-                  <button onClick={() => setForm(f => ({ ...f, client: null }))} className="text-amber-400 hover:text-red-500">
+                <div className={`mt-2 px-3 py-2 rounded-xl flex items-center justify-between ${form.client.isSpecial ? 'bg-amber-50 border border-amber-200' : 'bg-indigo-50 border border-indigo-200'}`}>
+                  <div className="flex items-center gap-2">
+                    {form.client.isSpecial && <span className="text-lg">⭐</span>}
+                    <span className={`text-sm font-bold ${form.client.isSpecial ? 'text-amber-700' : 'text-indigo-700'}`}>{form.client.name}</span>
+                    {form.client.isSpecial && <span className="badge badge-xs bg-amber-200 text-amber-900">Spécial</span>}
+                  </div>
+                  <button onClick={() => setForm(f => ({ ...f, client: null }))} className={`${form.client.isSpecial ? 'text-amber-400 hover:text-red-500' : 'text-indigo-400 hover:text-red-500'}`}>
                     <X size={14} />
                   </button>
+                </div>
+              )}
+              {form.client?.isSpecial && form.client?.specialNote && (
+                <div className="mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 italic">
+                  📝 {form.client.specialNote}
                 </div>
               )}
             </div>
@@ -373,7 +399,44 @@ const FactureForm: React.FC<{
                 <option value="virement">Virement Bancaire</option>
                 <option value="cheque">Chèque</option>
                 <option value="traite">Traite</option>
+                <option value="a_terme">À terme</option>
               </select>
+            </div>
+
+            <div className="bg-orange-50/50 border border-orange-200 rounded-xl p-3">
+              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.remiseActive}
+                  onChange={e => setForm(f => ({ ...f, remiseActive: e.target.checked }))}
+                  className="w-4 h-4 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
+                />
+                <span className="text-sm font-bold text-orange-800">Appliquer une remise</span>
+              </label>
+              {form.remiseActive && (
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.remisePct}
+                  onChange={e => {
+                    const pct = Number(e.target.value);
+                    setForm(f => ({
+                      ...f,
+                      remisePct: pct,
+                      remiseMontant: f.totalTTC * pct / 100
+                    }));
+                  }}
+                  className="w-full bg-white border border-orange-200 rounded-lg py-2 px-3 text-sm font-bold text-orange-700 placeholder-orange-300 focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 outline-none"
+                  placeholder="Pourcentage de remise (%)"
+                />
+              )}
+              {form.remiseActive && form.remiseMontant > 0 && (
+                <div className="text-sm font-bold text-orange-700 mt-2">
+                  - {formatAmount(form.remiseMontant)}
+                </div>
+              )}
             </div>
           </div>
 
@@ -390,6 +453,8 @@ const FactureForm: React.FC<{
                     <tr className="bg-gradient-to-r from-amber-50/80 to-orange-50/50 border-b border-amber-100">
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Désignation</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Quantité</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">Nbre Colis</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">Colisage</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">P.U HT</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">TVA %</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">Total TTC</th>
@@ -416,10 +481,32 @@ const FactureForm: React.FC<{
                           <input
                             type="number"
                             min="0"
-                            value={line.prixUnitHT}
-                            onChange={e => updateLine(line.id, 'prixUnitHT', Number(e.target.value))}
-                            className="w-full text-right bg-white border border-amber-200 rounded-lg py-1.5 px-2 text-sm font-bold focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 outline-none"
+                            value={line.nbreColis || ''}
+                            onChange={e => updateLine(line.id, 'nbreColis', Number(e.target.value) || 0)}
+                            className="w-full text-center bg-white border border-amber-200 rounded-lg py-1.5 px-2 text-xs font-bold focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 outline-none"
                           />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            value={line.colisage || ''}
+                            onChange={e => updateLine(line.id, 'colisage', Number(e.target.value) || 0)}
+                            className="w-full text-center bg-white border border-amber-200 rounded-lg py-1.5 px-2 text-xs font-bold focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              value={line.prixUnitHT}
+                              onChange={e => updateLine(line.id, 'prixUnitHT', Number(e.target.value))}
+                              readOnly={!form.client?.isSpecial}
+                              className={`w-full text-right border border-amber-200 rounded-lg py-1.5 px-2 text-sm font-bold focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 outline-none ${!form.client?.isSpecial ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`}
+                            />
+                            {!form.client?.isSpecial && <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400">🔒</span>}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <input
@@ -454,8 +541,18 @@ const FactureForm: React.FC<{
                     <span>{formatAmount(form.totalTVA)}</span>
                   </div>
                   <div className="flex justify-between text-base font-black text-amber-700 border-t border-amber-200 pt-2">
-                    <span>TOTAL TTC:</span>
+                    <span>Sous-total TTC:</span>
                     <span>{formatAmount(form.totalTTC)}</span>
+                  </div>
+                  {form.remiseActive && form.remiseMontant > 0 && (
+                    <div className="flex justify-between text-sm text-orange-700 bg-orange-50 p-2 rounded">
+                      <span>Remise ({form.remisePct}%):</span>
+                      <span>- {formatAmount(form.remiseMontant)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-base font-black text-emerald-700">
+                    <span>TOTAL TTC:</span>
+                    <span>{formatAmount(form.totalTTC - (form.remiseMontant || 0) + (form.timbreAmount || 0))}</span>
                   </div>
                 </div>
               </div>
@@ -534,7 +631,16 @@ function ViewModal({ facture, onClose, onEdit, onDelete, onPrint }: {
           <div className="grid grid-cols-2 gap-6 mb-8">
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Client</p>
-              <p className="text-lg font-bold text-gray-900">{facture.client?.name || 'N/A'}</p>
+              <div className={`p-4 rounded-xl ${facture.client?.isSpecial ? 'bg-amber-50 border border-amber-200' : 'bg-indigo-50 border border-indigo-200'}`}>
+                <div className="flex items-center gap-2">
+                  {facture.client?.isSpecial && <span className="text-lg">⭐</span>}
+                  <p className="text-lg font-bold text-gray-900">{facture.client?.name || 'N/A'}</p>
+                  {facture.client?.isSpecial && <span className="badge badge-sm bg-amber-200 text-amber-900">Spécial</span>}
+                </div>
+                {facture.client?.isSpecial && facture.client?.specialNote && (
+                  <p className="text-xs text-amber-800 mt-2 italic">📝 {facture.client.specialNote}</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -546,6 +652,8 @@ function ViewModal({ facture, onClose, onEdit, onDelete, onPrint }: {
                     <tr className="bg-amber-50/80 border-b border-amber-100">
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Désignation</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Qté</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">N° Colis</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Colisage</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">P.U HT</th>
                       <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">TVA</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Total TTC</th>
@@ -559,6 +667,8 @@ function ViewModal({ facture, onClose, onEdit, onDelete, onPrint }: {
                           <p className="text-xs text-gray-400">{line.product.refProduct}</p>
                         </td>
                         <td className="px-4 py-3 text-center font-semibold text-gray-600">{line.quantity}</td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-600">{line.nbreColis || '-'}</td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-600">{line.colisage || '-'}</td>
                         <td className="px-4 py-3 text-right text-gray-600">{formatAmount(line.prixUnitHT)}</td>
                         <td className="px-4 py-3 text-center">
                           <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold">{line.tva}%</span>
@@ -633,7 +743,10 @@ function ViewModal({ facture, onClose, onEdit, onDelete, onPrint }: {
 // ─── Print Function ───────────────────────────────────────────────────────────
 
 function printFacture(facture: FactureProformat, settings?: any) {
-  const win = window.open('', '_blank');
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  const win = iframe.contentWindow;
   if (!win) return;
 
   const lines = facture.lines.map((l, i) => `
@@ -641,6 +754,8 @@ function printFacture(facture: FactureProformat, settings?: any) {
       <td class="center">${i + 1}</td>
       <td><strong>${l.product.designation}</strong><br><small>${l.product.refProduct}</small></td>
       <td class="center">${l.quantity} ${l.product.uniteMesure}</td>
+      ${l.nbreColis ? `<td class="center">${l.nbreColis}</td>` : '<td class="center">-</td>'}
+      ${l.colisage ? `<td class="center">${l.colisage}</td>` : '<td class="center">-</td>'}
       <td class="right">${new Intl.NumberFormat('fr-DZ').format(l.prixUnitHT)}</td>
       <td class="center">${l.tva}%</td>
       <td class="right"><strong>${new Intl.NumberFormat('fr-DZ').format(l.totalHT)}</strong></td>
@@ -691,8 +806,13 @@ function printFacture(facture: FactureProformat, settings?: any) {
             <div class="company-details">
               <div><label>Adresse</label><span>${settings?.address || 'Alger, Algérie'}</span></div>
               <div><label>Contact</label><span>${settings?.phone || '0799047248'}</span></div>
-              ${settings?.nif || 'Numéro d\'Identification Fiscale' ? `<div><label>NIF</label><span>${settings?.nif || 'Numéro d\'Identification Fiscale'}</span></div>` : ''}
-              ${settings?.rip || '00000 00000 0000000000 00' ? `<div><label>RIP</label><span>${settings?.rip || '00000 00000 0000000000 00'}</span></div>` : ''}
+              ${settings?.email ? `<div><label>Email</label><span>${settings.email}</span></div>` : ''}
+              ${settings?.nif ? `<div><label>NIF</label><span>${settings.nif}</span></div>` : ''}
+              ${settings?.rc ? `<div><label>RC</label><span>${settings.rc}</span></div>` : ''}
+              ${settings?.nis ? `<div><label>NIS</label><span>${settings.nis}</span></div>` : ''}
+              ${settings?.article ? `<div><label>Article</label><span>${settings.article}</span></div>` : ''}
+              ${settings?.rip ? `<div><label>RIP</label><span>${settings.rip}</span></div>` : ''}
+              ${settings?.activite ? `<div><label>Activité</label><span>${settings.activite}</span></div>` : ''}
             </div>
           </div>
           <div style="text-align: right;">
@@ -704,10 +824,20 @@ function printFacture(facture: FactureProformat, settings?: any) {
 
       ${facture.client ? `
         <div style="margin-bottom: 20px; padding: 12px; background: #fef3c7; border-left: 4px solid #f97316; border-radius: 4px;">
-          <strong>Client:</strong> ${facture.client.name}
-          ${facture.client.phone ? `<br><strong>Téléphone:</strong> ${facture.client.phone}` : ''}
-          ${facture.client.wilaya ? `<br><strong>Wilaya:</strong> ${facture.client.wilaya}` : ''}
-          ${facture.client.taxId ? `<br><strong>NIF:</strong> ${facture.client.taxId}` : ''}
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <strong>Client:</strong> ${facture.client.name}
+              ${facture.client.isSpecial ? '<span style="background: #fff; color: #b45309; padding: 1px 6px; border-radius: 4px; font-size: 9px; border: 1px solid #f97316; margin-left: 8px; font-weight: 900;">⭐ CLIENT SPÉCIAL</span>' : ''}
+              ${facture.client.phone ? `<br><strong>Téléphone:</strong> ${facture.client.phone}` : ''}
+              ${facture.client.wilaya ? `<br><strong>Wilaya:</strong> ${facture.client.wilaya}` : ''}
+              ${facture.client.taxId ? `<br><strong>NIF:</strong> ${facture.client.taxId}` : ''}
+            </div>
+            ${facture.client.isSpecial && facture.client.specialNote ? `
+              <div style="font-size: 10px; color: #b45309; font-style: italic; max-width: 250px; text-align: right;">
+                📝 ${facture.client.specialNote}
+              </div>
+            ` : ''}
+          </div>
         </div>
       ` : ''}
 
@@ -717,6 +847,8 @@ function printFacture(facture: FactureProformat, settings?: any) {
             <th class="center">#</th>
             <th>Désignation</th>
             <th class="center">Qté</th>
+            <th class="center">Nbre Colis</th>
+            <th class="center">Colisage</th>
             <th class="right">P.U HT</th>
             <th class="center">TVA</th>
             <th class="right">Total HT</th>
@@ -736,9 +868,19 @@ function printFacture(facture: FactureProformat, settings?: any) {
             <span>Total TVA:</span>
             <span>${new Intl.NumberFormat('fr-DZ').format(facture.totalTVA)} DA</span>
           </div>
-          <div style="display: flex; justify-content: space-between; font-weight: 900; color: #f97316; border-top: 2px solid #f97316; padding-top: 8px;">
-            <span>TOTAL TTC:</span>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 700; color: #f97316; border-top: 2px solid #f97316; padding-top: 8px;">
+            <span>Sous-total TTC:</span>
             <span>${new Intl.NumberFormat('fr-DZ').format(facture.totalTTC)} DA</span>
+          </div>
+          ${facture.remiseActive && facture.remiseMontant > 0 ? `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; color: #ea580c;">
+              <span>Remise (${facture.remisePct}%):</span>
+              <span>- ${new Intl.NumberFormat('fr-DZ').format(facture.remiseMontant)} DA</span>
+            </div>
+          ` : ''}
+          <div style="display: flex; justify-content: space-between; font-weight: 900; color: #1a1a1a; border-top: 2px solid #f97316; padding-top: 8px;">
+            <span>TOTAL TTC:</span>
+            <span>${new Intl.NumberFormat('fr-DZ').format((facture.totalTTC - (facture.remiseMontant || 0) + (facture.timbreAmount || 0)))} DA</span>
           </div>
         </div>
       </div>
@@ -763,6 +905,12 @@ function printFacture(facture: FactureProformat, settings?: any) {
 
   win.document.write(htmlTemplate);
   win.document.close();
+  win.onafterprint = () => {
+    document.body.removeChild(iframe);
+    window.location.reload();
+  };
+  win.focus();
+  win.print();
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -788,7 +936,7 @@ export default function FactureProformatPage() {
         .select('*, facture_proformat_lines(*)')
         .order('date', { ascending: false }),
       supabase.from('clients')
-        .select('id, name, phone, tax_id, wilaya, commune')
+        .select('id, name, phone, email, tax_id, wilaya, commune, activite, code_postal, address, notes, is_special, special_note')
         .order('name'),
       supabase.from('products')
         .select('id, designation, ref_product, bar_code, prix_achat_ht, prix_vente, tva, current_quantity, unite_mesure, famille')
@@ -797,8 +945,19 @@ export default function FactureProformatPage() {
     ]);
 
     const clientsList = (clientsRes.data || []).map((r: any) => ({
-      id: r.id, name: r.name, phone: r.phone || '',
-      taxId: r.tax_id || '', wilaya: r.wilaya || '', commune: r.commune || '',
+      id: r.id, 
+      name: r.name, 
+      phone: r.phone || '',
+      email: r.email || '',
+      taxId: r.tax_id || '', 
+      wilaya: r.wilaya || '', 
+      commune: r.commune || '',
+      activite: r.activite || '',
+      codePostal: r.code_postal || '',
+      address: r.address || '',
+      notes: r.notes || '',
+      isSpecial: r.is_special || false,
+      specialNote: r.special_note || ''
     }));
     const productsList = (productsRes.data || []).map((r: any) => ({
       id: r.id, designation: r.designation, refProduct: r.ref_product || '',
@@ -830,10 +989,16 @@ export default function FactureProformatPage() {
           tva: l.tva,
           totalHT: l.total_ht,
           totalTTC: l.total_ttc,
+          nbreColis: l.nbre_colis || 0,
+          colisage: l.colisage || 0,
         })),
         totalHT: row.total_ht,
         totalTVA: row.total_tva,
         totalTTC: row.total_ttc,
+        timbreAmount: row.timbre_amount || 0,
+        remiseActive: row.remise_active || false,
+        remisePct: row.remise_pct || 0,
+        remiseMontant: row.remise_montant || 0,
         status: row.status,
         notes: row.notes || '',
         paymentMode: row.payment_mode || 'virement',
@@ -865,9 +1030,13 @@ export default function FactureProformatPage() {
         total_ht: facture.totalHT,
         total_tva: facture.totalTVA,
         total_ttc: facture.totalTTC,
+        timbre_amount: facture.timbreAmount || 0,
         status: facture.status,
         payment_mode: facture.paymentMode,
         notes: facture.notes || null,
+        remise_active: facture.remiseActive,
+        remise_pct: facture.remisePct,
+        remise_montant: facture.remiseMontant,
       };
 
       let id = facture.id;
@@ -892,6 +1061,8 @@ export default function FactureProformatPage() {
         quantity: l.quantity,
         prix_unit_ht: l.prixUnitHT,
         tva: l.tva,
+        nbre_colis: l.nbreColis || 0,
+        colisage: l.colisage || 0,
       }));
       if (lines.length > 0) await supabase.from('facture_proformat_lines').insert(lines);
 
@@ -934,6 +1105,55 @@ export default function FactureProformatPage() {
     }
     setShowForm(false);
     setEditingFacture(undefined);
+  };
+
+  const handleConvertToBL = async (fp: FactureProformat) => {
+    if (!confirm('Convertir cette facture proformat en Bon de Livraison ?')) return;
+    
+    try {
+      // Generate BL number
+      const blNum = `BL-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+      
+      // Insert bon_livraison
+      const { data: bl, error } = await supabase
+        .from('bons_livraison')
+        .insert({
+          numero: blNum,
+          date: new Date().toISOString().split('T')[0],
+          client_id: fp.client?.id || null,
+          total_ht: fp.totalHT,
+          total_tva: fp.totalTVA,
+          total_ttc: fp.totalTTC,
+          status: 'brouillon',
+          notes: `Converti depuis FP: ${fp.numero}`,
+          proformat_id: fp.id,
+        })
+        .select().single();
+        
+      if (error || !bl) { alert('Erreur lors de la conversion'); return; }
+      
+      // Insert lines
+      const lines = fp.lines.map(l => ({
+        bl_id: bl.id,
+        product_id: l.product?.id || null,
+        designation: l.product?.designation || 'Article',
+        quantity: l.quantity,
+        prix_unit_ht: l.prixUnitHT,
+        tva: l.tva,
+        total_ht: l.totalHT,
+        total_ttc: l.totalTTC,
+      }));
+      await supabase.from('bon_livraison_lines').insert(lines);
+      
+      // Mark proformat as converted
+      await supabase.from('factures_proformat').update({ status: 'envoye' }).eq('id', fp.id);
+      
+      alert(`Bon de Livraison ${blNum} créé avec succès !`);
+      await loadData();
+    } catch (err) {
+      console.error('Error converting to BL:', err);
+      alert('Erreur lors de la conversion');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -1111,6 +1331,17 @@ export default function FactureProformatPage() {
                         >
                           <Printer size={16} />
                         </motion.button>
+                        {facture.status === 'confirme' && (
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleConvertToBL(facture)}
+                            className="p-2 text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-all"
+                            title="Convertir en Bon de Livraison"
+                          >
+                            <Truck size={16} />
+                          </motion.button>
+                        )}
                         <motion.button
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.95 }}

@@ -4,11 +4,12 @@
  */
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, Search, Filter, Info, Package as PackageIcon, Upload, Printer } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Search, Filter, Info, Package as PackageIcon, Upload, Printer, ClipboardList, Check, Clock } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { uploadProductImage } from '../lib/storage';
+import { useAuth } from '../context/AuthContext';
 
 interface ProductionItem {
   id?: string;
@@ -44,6 +45,32 @@ interface StorageProduct {
   current_quantity: number;
 }
 
+interface Worker {
+  id: string;
+  name: string;
+}
+
+interface ProductionOrderItem {
+  id?: string;
+  productId: string;
+  designation: string;
+  barCode: string;
+  refProduct: string;
+  quantity: number;
+  uniteMesure: string;
+}
+
+interface ProductionOrder {
+  id: string;
+  worker_id: string;
+  planned_date: string;
+  notes?: string;
+  status: 'pending' | 'in-progress' | 'completed';
+  created_by?: string;
+  created_at?: string;
+  worker?: { id: string; name: string };
+}
+
 const mapProduction = (row: any): Production => ({
   id: row.id,
   picture_url: row.picture_url,
@@ -60,6 +87,7 @@ const mapProduction = (row: any): Production => ({
 });
 
 const Production = () => {
+  const { hasPermission } = useAuth();
   const { isRTL } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [productions, setProductions] = useState<Production[]>([]);
@@ -73,6 +101,8 @@ const Production = () => {
   const [showDetails, setShowDetails] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [dateDebut, setDateDebut] = useState('');
+  const [dateFin, setDateFin] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [showProductResults, setShowProductResults] = useState(false);
   const [pictureFile, setPictureFile] = useState<File | null>(null);
@@ -91,9 +121,24 @@ const Production = () => {
 
   const [formItems, setFormItems] = useState<ProductionItem[]>([]);
 
+  // Production Orders state
+  const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
+  const [plannedDate, setPlannedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [orderNotes, setOrderNotes] = useState('');
+  const [orderItems, setOrderItems] = useState<ProductionOrderItem[]>([]);
+  const [orderSearch, setOrderSearch] = useState('');
+  const [showOrderResults, setShowOrderResults] = useState(false);
+  const [activeTab, setActiveTab] = useState<'productions' | 'orders'>('productions');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
+
   useEffect(() => {
     loadProductions();
     loadStorageProducts();
+    loadProductionOrders();
+    loadWorkers();
   }, []);
 
   const loadProductions = async () => {
@@ -159,11 +204,74 @@ const Production = () => {
     }
   };
 
+  const loadWorkers = async () => {
+    try {
+      const { data, error } = await supabase.from('users').select('id, name').eq('role', 'worker').order('name');
+      if (error) throw error;
+      if (data) {
+        setWorkers(data);
+      }
+    } catch (error) {
+      console.error('Error loading workers:', error);
+    }
+  };
+
+  const loadProductionOrders = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('production_orders')
+        .select('*, worker:worker_id(id, name)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (data) {
+        setProductionOrders(data.map((row: any) => ({
+          id: row.id,
+          worker_id: row.worker_id,
+          planned_date: row.planned_date,
+          notes: row.notes,
+          status: row.status,
+          created_by: row.created_by,
+          created_at: row.created_at,
+          worker: row.worker,
+        })));
+      }
+    } catch (error) {
+      console.error('Error loading production orders:', error);
+    }
+  };
+
   const filteredProductions = productions.filter(p => {
     const matchesSearch = p.designation.toLowerCase().includes(searchTerm.toLowerCase()) || p.ref_product.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDateStart = !dateDebut || p.date >= dateDebut;
+    const matchesDateEnd = !dateFin || p.date <= dateFin;
+    return matchesSearch && matchesStatus && matchesDateStart && matchesDateEnd;
   });
+
+  const filteredOrders = productionOrders.filter(order => {
+    const matchesDateStart = !dateDebut || order.planned_date >= dateDebut;
+    const matchesDateEnd = !dateFin || order.planned_date <= dateFin;
+    const matchesStatus = orderStatusFilter === 'all' || order.status === orderStatusFilter;
+    return matchesDateStart && matchesDateEnd && matchesStatus;
+  });
+
+  const setThisMonth = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const end = new Date().toISOString().split('T')[0];
+    setDateDebut(start);
+    setDateFin(end);
+  };
+
+  const setThisWeek = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff)).toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+    setDateDebut(monday);
+    setDateFin(today);
+  };
 
   const filteredStorageProducts = storageProducts.filter(p =>
     p.designation.toLowerCase().includes(productSearch.toLowerCase()) ||
@@ -320,6 +428,101 @@ const Production = () => {
     setShowModal(true);
   };
 
+  // Production Order Handlers
+  const handleAddOrderProduct = (product: StorageProduct) => {
+    const exists = orderItems.find(item => item.productId === product.id);
+    if (exists) {
+      setOrderItems(orderItems.map(item =>
+        item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
+      ));
+    } else {
+      setOrderItems([...orderItems, {
+        productId: product.id,
+        designation: product.designation,
+        barCode: product.bar_code,
+        refProduct: product.ref_product,
+        quantity: 1,
+        uniteMesure: product.unite_mesure,
+      }]);
+    }
+    setOrderSearch('');
+    setShowOrderResults(false);
+  };
+
+  const handleRemoveOrderProduct = (productId: string) => {
+    setOrderItems(orderItems.filter(item => item.productId !== productId));
+  };
+
+  const handleSaveProductionOrder = async () => {
+    if (!selectedWorker || orderItems.length === 0) {
+      alert('Veuillez sélectionner un ouvrier et ajouter au moins un produit');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const { data: newOrder, error: orderError } = await supabase
+        .from('production_orders')
+        .insert({
+          worker_id: selectedWorker,
+          planned_date: plannedDate,
+          notes: orderNotes,
+          status: 'pending',
+          created_by: (await supabase.auth.getUser()).data.user?.id,
+        })
+        .select()
+        .single();
+
+      if (orderError) throw orderError;
+
+      if (newOrder) {
+        const itemsToInsert = orderItems.map(item => ({
+          order_id: newOrder.id,
+          product_id: item.productId,
+          quantity: item.quantity,
+        }));
+        
+        const { error: itemsError } = await supabase.from('production_order_items').insert(itemsToInsert);
+        if (itemsError) throw itemsError;
+      }
+
+      setShowOrderModal(false);
+      setOrderItems([]);
+      setSelectedWorker(null);
+      setPlannedDate(new Date().toISOString().split('T')[0]);
+      setOrderNotes('');
+      await loadProductionOrders();
+    } catch (error) {
+      console.error('Error saving production order:', error);
+      alert('Erreur lors de la création de l\'ordre');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: 'pending' | 'in-progress' | 'completed') => {
+    try {
+      await supabase.from('production_orders').update({ status: newStatus }).eq('id', orderId);
+      await loadProductionOrders();
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      alert('Erreur lors de la mise à jour du statut');
+    }
+  };
+
+  const handleDeleteProductionOrder = async (orderId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cet ordre de production?')) return;
+
+    try {
+      await supabase.from('production_order_items').delete().eq('order_id', orderId);
+      await supabase.from('production_orders').delete().eq('id', orderId);
+      await loadProductionOrders();
+    } catch (error) {
+      console.error('Error deleting order:', error);
+      alert('Erreur lors de la suppression');
+    }
+  };
+
   const handleDeleteProduction = async (id: string) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette production?')) return;
 
@@ -432,24 +635,147 @@ const Production = () => {
               </h1>
               <p className="text-gray-500 mt-3 font-bold text-sm uppercase tracking-widest">{productions.length} productions créées</p>
             </div>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                resetForm();
-                setEditingId(null);
-                setShowModal(true);
-              }}
-              className="bg-gradient-to-br from-indigo-600 via-blue-600 to-slate-600 flex items-center gap-3 px-8 py-4 rounded-2xl text-white font-black shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all uppercase tracking-[0.2em] text-sm"
-            >
-              <Plus size={22} />
-              Nouvelle Production
-            </motion.button>
+            {hasPermission('action_create') && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  resetForm();
+                  setEditingId(null);
+                  setShowModal(true);
+                }}
+                className="bg-gradient-to-br from-indigo-600 via-blue-600 to-slate-600 flex items-center gap-3 px-8 py-4 rounded-2xl text-white font-black shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all uppercase tracking-[0.2em] text-sm"
+              >
+                <Plus size={22} />
+                Nouvelle Production
+              </motion.button>
+            )}
+            {hasPermission('action_create') && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  setOrderItems([]);
+                  setSelectedWorker(null);
+                  setPlannedDate(new Date().toISOString().split('T')[0]);
+                  setOrderNotes('');
+                  setShowOrderModal(true);
+                }}
+                className="bg-gradient-to-br from-amber-500 via-orange-500 to-red-600 flex items-center gap-3 px-8 py-4 rounded-2xl text-white font-black shadow-lg hover:shadow-xl hover:shadow-amber-500/40 transition-all uppercase tracking-[0.2em] text-sm"
+              >
+                <ClipboardList size={22} />
+                Nouvel Ordre de Production
+              </motion.button>
+            )}
           </div>
         </div>
       </motion.div>
 
+      {/* Tabs & Date Filters */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6"
+      >
+        <div className="flex flex-col lg:flex-row gap-6 lg:items-end justify-between bg-white/50 backdrop-blur-xl p-6 rounded-3xl border border-white shadow-xl shadow-indigo-500/5">
+          <div className="flex gap-2 p-1.5 bg-gray-100/50 rounded-2xl w-fit border border-gray-100">
+            <button
+              onClick={() => setActiveTab('productions')}
+              className={`px-6 py-3 rounded-xl font-black text-xs uppercase tracking-[0.2em] transition-all ${
+                activeTab === 'productions'
+                  ? 'bg-white text-indigo-600 shadow-lg shadow-indigo-500/10'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              Productions
+            </button>
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`px-6 py-3 rounded-xl font-black text-xs uppercase tracking-[0.2em] transition-all ${
+                activeTab === 'orders'
+                  ? 'bg-white text-amber-600 shadow-lg shadow-amber-500/10'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              Ordres
+            </button>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-end flex-1 max-w-3xl">
+            <div className="flex-1 w-full space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ps-1">Date de début</label>
+              <input
+                type="date"
+                value={dateDebut}
+                onChange={(e) => setDateDebut(e.target.value)}
+                className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="flex-1 w-full space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ps-1">Date de fin</label>
+              <input
+                type="date"
+                value={dateFin}
+                onChange={(e) => setDateFin(e.target.value)}
+                className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={setThisWeek}
+                className="px-4 py-3 bg-white border border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm"
+              >
+                Cette Semaine
+              </button>
+              <button
+                onClick={setThisMonth}
+                className="px-4 py-3 bg-white border border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm"
+              >
+                Ce Mois
+              </button>
+              {(dateDebut || dateFin) && (
+                <button
+                  onClick={() => { setDateDebut(''); setDateFin(''); }}
+                  className="px-4 py-3 bg-rose-50 border border-rose-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-rose-600 hover:bg-rose-100 transition-all shadow-sm"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Summary Banner */}
+        {(dateDebut || dateFin) && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="overflow-hidden"
+          >
+            <div className="bg-gradient-to-r from-indigo-600 to-blue-600 rounded-2xl p-4 flex items-center justify-between text-white shadow-lg shadow-indigo-500/20">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                  <Filter size={18} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Filtre Actif</p>
+                  <p className="text-sm font-bold">
+                    Filtré du <span className="underline decoration-2 underline-offset-4">{dateDebut || '...'}</span> au <span className="underline decoration-2 underline-offset-4">{dateFin || 'Aujourd\'hui'}</span>
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Résultats</p>
+                <p className="text-lg font-black">{activeTab === 'productions' ? filteredProductions.length : filteredOrders.length} {activeTab === 'productions' ? 'productions' : 'ordres'}</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </motion.div>
+
       {/* Productions Table */}
+      {activeTab === 'productions' && (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -461,43 +787,47 @@ const Production = () => {
           animate={{ opacity: 1 }}
           className="bg-gradient-to-br from-white to-indigo-50/20 rounded-3xl border border-indigo-100/50 shadow-xl overflow-hidden backdrop-blur"
         >
-          <div className="p-6 md:p-8 border-b border-indigo-100/50 bg-gradient-to-r from-indigo-50/50 to-purple-50/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h3 className="text-xl font-black text-gray-900 uppercase tracking-[0.15em]">Productions</h3>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Rechercher..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl py-2 ps-10 pe-4 focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none transition-all w-full md:w-64 text-sm font-medium shadow-sm"
-                />
-              </div>
-              <div className="relative">
-                <button 
-                  onClick={() => setShowFilterMenu(!showFilterMenu)}
-                  className={`p-2.5 bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl transition-all ${statusFilter !== 'all' ? 'text-indigo-600 border-indigo-200 bg-indigo-50/50' : 'text-gray-600 hover:text-indigo-600'}`}
-                >
-                  <Filter size={18} />
-                </button>
-                <AnimatePresence>
-                  {showFilterMenu && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-20 overflow-hidden"
+          <div className="p-6 md:p-8 border-b border-indigo-100/50 bg-gradient-to-r from-indigo-50/50 to-purple-50/30">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <h3 className="text-xl font-black text-gray-900 uppercase tracking-[0.15em]">Productions</h3>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input
+                      type="text"
+                      placeholder="Rechercher..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl py-2 ps-10 pe-4 focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none transition-all w-full md:w-64 text-sm font-medium shadow-sm"
+                    />
+                  </div>
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowFilterMenu(!showFilterMenu)}
+                      className={`p-2.5 bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl transition-all ${statusFilter !== 'all' ? 'text-indigo-600 border-indigo-200 bg-indigo-50/50' : 'text-gray-600 hover:text-indigo-600'}`}
                     >
-                      <div className="p-2 space-y-1">
-                        <button onClick={() => { setStatusFilter('all'); setShowFilterMenu(false); }} className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold ${statusFilter === 'all' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>Toutes</button>
-                        <button onClick={() => { setStatusFilter('pending'); setShowFilterMenu(false); }} className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold ${statusFilter === 'pending' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>En attente</button>
-                        <button onClick={() => { setStatusFilter('in-progress'); setShowFilterMenu(false); }} className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold ${statusFilter === 'in-progress' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>En cours</button>
-                        <button onClick={() => { setStatusFilter('completed'); setShowFilterMenu(false); }} className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold ${statusFilter === 'completed' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>Terminée</button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      <Filter size={18} />
+                    </button>
+                    <AnimatePresence>
+                      {showFilterMenu && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-20 overflow-hidden"
+                        >
+                          <div className="p-2 space-y-1">
+                            <button onClick={() => { setStatusFilter('all'); setShowFilterMenu(false); }} className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold ${statusFilter === 'all' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>Toutes</button>
+                            <button onClick={() => { setStatusFilter('pending'); setShowFilterMenu(false); }} className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold ${statusFilter === 'pending' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>En attente</button>
+                            <button onClick={() => { setStatusFilter('in-progress'); setShowFilterMenu(false); }} className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold ${statusFilter === 'in-progress' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>En cours</button>
+                            <button onClick={() => { setStatusFilter('completed'); setShowFilterMenu(false); }} className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold ${statusFilter === 'completed' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>Terminée</button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -565,27 +895,33 @@ const Production = () => {
                         >
                           <Info size={18} />
                         </button>
-                        <button
-                          onClick={() => handleEditProduction(production)}
-                          className="action-btn-edit"
-                          title="Modifier"
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduction(production.id)}
-                          className="action-btn-delete"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                        <button
-                          onClick={() => handlePrintProduction(production)}
-                          className="action-btn-print"
-                          title="Imprimer"
-                        >
-                          <Printer size={18} />
-                        </button>
+                        {hasPermission('action_edit') && (
+                          <button
+                            onClick={() => handleEditProduction(production)}
+                            className="action-btn-edit"
+                            title="Modifier"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                        )}
+                        {hasPermission('action_delete') && (
+                          <button
+                            onClick={() => handleDeleteProduction(production.id)}
+                            className="action-btn-delete"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                        {hasPermission('action_print') && (
+                          <button
+                            onClick={() => handlePrintProduction(production)}
+                            className="action-btn-print"
+                            title="Imprimer"
+                          >
+                            <Printer size={18} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -601,6 +937,136 @@ const Production = () => {
           </div>
         </motion.div>
       </motion.div>
+      )}
+
+      {/* Production Orders Table */}
+      {activeTab === 'orders' && (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+      >
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="bg-gradient-to-br from-white to-amber-50/20 rounded-3xl border border-amber-100/50 shadow-xl overflow-hidden backdrop-blur"
+        >
+          <div className="p-6 md:p-8 border-b border-amber-100/50 bg-gradient-to-r from-amber-50/50 to-orange-50/30">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-black text-gray-900 uppercase tracking-[0.15em]">Ordres de Production</h3>
+                <div className="flex items-center gap-3">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Statut</label>
+                  <select
+                    value={orderStatusFilter}
+                    onChange={(e) => setOrderStatusFilter(e.target.value)}
+                    className="bg-white border border-amber-200 rounded-xl px-4 py-2 text-sm font-bold text-amber-700 focus:ring-4 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all shadow-sm"
+                  >
+                    <option value="all">Tous</option>
+                    <option value="pending">En attente</option>
+                    <option value="in-progress">En cours</option>
+                    <option value="completed">Terminé</option>
+                  </select>
+                </div>
+              </div>
+              
+              {productionOrders.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-amber-200/50">
+                        <th className="px-6 py-4 text-left whitespace-nowrap">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Ouvrier</span>
+                        </th>
+                        <th className="px-6 py-4 text-left whitespace-nowrap">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Date Prévue</span>
+                        </th>
+                        <th className="px-6 py-4 text-left whitespace-nowrap">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Remarques</span>
+                        </th>
+                        <th className="px-6 py-4 text-center whitespace-nowrap">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Statut</span>
+                        </th>
+                        <th className="px-6 py-4 text-end whitespace-nowrap">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-amber-100/50">
+                      {filteredOrders
+                        .map(order => (
+                        <motion.tr
+                          key={order.id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="hover:bg-amber-50/50 transition-colors"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="font-bold text-sm text-gray-900">{order.worker?.name || 'N/A'}</span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="font-bold text-sm text-gray-900">{order.planned_date}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-600 line-clamp-2">{order.notes || '-'}</span>
+                          </td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap">
+                            <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                              order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              order.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {order.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-end whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2">
+                              {hasPermission('action_edit') && order.status !== 'in-progress' && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'in-progress')}
+                                  className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                  title="Marquer en cours"
+                                >
+                                  <Clock size={18} />
+                                </button>
+                              )}
+                              {hasPermission('action_edit') && order.status !== 'completed' && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'completed')}
+                                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                  title="Marquer complété"
+                                >
+                                  <Check size={18} />
+                                </button>
+                              )}
+                              {hasPermission('action_delete') && (
+                                <button
+                                  onClick={() => handleDeleteProductionOrder(order.id)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-12 text-center">
+                  <ClipboardList className="mx-auto text-gray-200 mb-4" size={48} />
+                  <p className="text-gray-400 font-medium italic">Aucun ordre de production</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+      )}
 
       {/* Modal */}
       <AnimatePresence>
@@ -818,6 +1284,202 @@ const Production = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Production Order Modal */}
+      <AnimatePresence>
+        {showOrderModal && (
+          <div className="fixed inset-0 z-[60] flex justify-center items-start pt-4 m-0 md:pt-10 p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowOrderModal(false)}
+              className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full relative z-[61] max-h-[90vh] overflow-hidden flex flex-col font-sans"
+            >
+              <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
+                <h3 className="text-xl font-black text-gray-900 tracking-tight italic uppercase">Nouvel Ordre de Production</h3>
+                <button
+                  onClick={() => setShowOrderModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-8 space-y-6">
+                {/* Worker Selection */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Ouvrier Assigné *</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Rechercher un ouvrier..."
+                      value={selectedWorker ? workers.find(w => w.id === selectedWorker)?.name || '' : ''}
+                      onChange={(e) => {
+                        const matching = workers.find(w => w.name.toLowerCase().includes(e.target.value.toLowerCase()));
+                        if (matching) setSelectedWorker(matching.id);
+                      }}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-5 font-bold text-sm outline-none focus:border-amber-600"
+                    />
+                    {!selectedWorker && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-2xl shadow-lg max-h-48 overflow-y-auto z-10">
+                        {workers.map(worker => (
+                          <button
+                            key={worker.id}
+                            type="button"
+                            onClick={() => setSelectedWorker(worker.id)}
+                            className="w-full text-left px-5 py-3 hover:bg-amber-50 border-b border-gray-100 last:border-0 font-bold text-sm text-gray-900"
+                          >
+                            {worker.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {selectedWorker && (
+                    <div className="px-3 py-2 bg-amber-50 rounded-xl text-sm font-bold text-amber-700 flex items-center justify-between">
+                      <span>{workers.find(w => w.id === selectedWorker)?.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedWorker(null)}
+                        className="text-amber-400 hover:text-amber-600"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Planned Date */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Date Prévue *</label>
+                  <input
+                    type="date"
+                    value={plannedDate}
+                    onChange={(e) => setPlannedDate(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-5 font-bold text-sm outline-none focus:border-amber-600"
+                  />
+                </div>
+
+                {/* Products Search */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Ajouter des Produits</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Rechercher un produit..."
+                      value={orderSearch}
+                      onChange={(e) => {
+                        setOrderSearch(e.target.value);
+                        setShowOrderResults(e.target.value.length > 0);
+                      }}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-5 font-bold text-sm outline-none focus:border-amber-600"
+                    />
+                    <AnimatePresence>
+                      {showOrderResults && orderSearch && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-2xl shadow-lg z-10 max-h-48 overflow-y-auto"
+                        >
+                          {storageProducts
+                            .filter(p =>
+                              p.designation.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                              p.ref_product.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                              p.bar_code.toLowerCase().includes(orderSearch.toLowerCase())
+                            )
+                            .map(p => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => handleAddOrderProduct(p)}
+                                className="w-full text-left px-5 py-3 hover:bg-amber-50 border-b border-gray-100 last:border-0"
+                              >
+                                <p className="text-sm font-bold text-gray-900">{p.designation}</p>
+                                <p className="text-[10px] font-bold text-gray-400">{p.ref_product}</p>
+                              </button>
+                            ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Selected Products */}
+                  {orderItems.length > 0 && (
+                    <div className="space-y-2">
+                      {orderItems.map((product, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50 p-3 rounded-xl border border-amber-100">
+                          <div className="flex-1">
+                            <p className="text-sm font-bold text-gray-900">{product.designation}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              value={product.quantity}
+                              onChange={(e) => {
+                                const newItems = [...orderItems];
+                                newItems[idx].quantity = parseInt(e.target.value) || 1;
+                                setOrderItems(newItems);
+                              }}
+                              className="w-16 bg-white border border-gray-200 rounded-lg py-2 px-2 font-bold text-sm outline-none focus:border-amber-600"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOrderProduct(product.productId)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Remarques</label>
+                  <textarea
+                    value={orderNotes}
+                    onChange={(e) => setOrderNotes(e.target.value)}
+                    rows={3}
+                    placeholder="Ajouter des remarques spécifiques..."
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-5 font-bold text-sm outline-none focus:border-amber-600 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-4 p-8 border-t border-gray-100 shrink-0 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setShowOrderModal(false)}
+                  className="flex-1 py-4 rounded-2xl font-black text-gray-500 hover:bg-gray-100 transition-colors text-xs uppercase tracking-[0.2em]"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveProductionOrder}
+                  disabled={isSaving || !selectedWorker || orderItems.length === 0}
+                  className="flex-1 bg-amber-600 text-white rounded-2xl py-4 px-8 font-black text-xs uppercase tracking-[0.2em] hover:bg-amber-700 shadow-xl shadow-amber-100 transition-all disabled:opacity-50"
+                >
+                  {isSaving ? 'Enregistrement...' : 'Créer Ordre'}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
