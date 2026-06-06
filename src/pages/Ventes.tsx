@@ -1832,15 +1832,17 @@ export default function VentesPage() {
   const handleDelete = async (id: string) => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cette vente ?')) {
       try {
-        // Delete lines first
+        // Delete child rows first (foreign key order matters)
+        await supabase.from('client_debts').delete().eq('vente_id', id);
         await supabase.from('vente_lines').delete().eq('vente_id', id);
-        // Delete vente
-        await supabase.from('ventes').delete().eq('id', id);
-        await loadData();
-      } catch (err) {
+        const { error } = await supabase.from('ventes').delete().eq('id', id);
+        if (error) throw error;
+        setVentes(prev => prev.filter(v => v.id !== id));
+        setViewingVente(undefined);
+      } catch (err: any) {
         console.error('Error deleting vente:', err);
+        alert('Erreur lors de la suppression: ' + (err?.message || 'Erreur inconnue'));
       }
-      setViewingVente(undefined);
     }
   };
 

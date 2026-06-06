@@ -42,10 +42,12 @@ import Empty from './pages/Empty';
 import Layout from './components/Layout';
 
 const ProtectedRoute = ({ children, permission }: { children: React.ReactNode, permission?: string }) => {
-  const { status, isAuthenticated, hasPermission } = useAuth();
+  const { status, isAuthenticated, hasPermission, user } = useAuth();
 
-  // Show spinner only during initial session restore
-  if (status === 'initializing') return (
+  // Spinner during: initial session restore, OR authenticated but profile not yet loaded
+  // (profile is needed for permission checks — without it hasPermission always returns false,
+  //  which would incorrectly redirect the user to "/" on refresh)
+  if (status === 'initializing' || (isAuthenticated && !user && !!permission)) return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-600 to-purple-600">
       <div className="text-white text-center">
         <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4"></div>
