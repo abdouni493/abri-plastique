@@ -863,10 +863,14 @@ export default function FournisseursPage() {
     setEditingSupplier(undefined);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer ce fournisseur ?')) {
-      deleteSupplier(id);
-      setViewingSupplier(undefined);
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Êtes-vous sûr de vouloir supprimer ce fournisseur ? Toutes les données liées (achats, dettes, transactions) seront également supprimées.')) {
+      try {
+        await deleteSupplier(id);
+        setViewingSupplier(undefined);
+      } catch (err: any) {
+        alert('Erreur lors de la suppression: ' + (err?.message || 'Erreur inconnue'));
+      }
     }
   };
 
@@ -1096,9 +1100,7 @@ export default function FournisseursPage() {
                            <motion.button
                              whileHover={{ scale: 1.1 }}
                              whileTap={{ scale: 0.95 }}
-                             onClick={() => {
-                               if (window.confirm('Êtes-vous sûr ?')) handleDelete(supplier.id);
-                             }}
+                             onClick={() => handleDelete(supplier.id)}
                              className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all"
                              title="Supprimer"
                            >

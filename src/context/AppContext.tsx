@@ -627,12 +627,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteSupplier = async (id: string) => {
-    try {
-      await supabase.from('suppliers').delete().eq('id', id);
-      setSuppliers(prev => prev.filter(s => s.id !== id));
-    } catch (err) {
-      console.error('Error deleting supplier:', err);
+    // Delete child rows in FK-dependency order before removing the supplier.
+    // supabase.delete() never throws — it returns {error}; we must check it.
+
+    // achats + their lines
+    const { data: achats } = await supabase.from('achats').select('id').eq('supplier_id', id);
+    if (achats?.length) {
+      await supabase.from('achat_lines').delete().in('achat_id', achats.map((a: any) => a.id));
     }
+    await supabase.from('achats').delete().eq('supplier_id', id);
+
+    // bons_commande + their lines
+    const { data: bonsCmd } = await supabase.from('bons_commande').select('id').eq('supplier_id', id);
+    if (bonsCmd?.length) {
+      await supabase.from('bon_commande_lines').delete().in('bc_id', bonsCmd.map((b: any) => b.id));
+    }
+    await supabase.from('bons_commande').delete().eq('supplier_id', id);
+
+    // bons_reception + their lines
+    const { data: bonsRec } = await supabase.from('bons_reception').select('id').eq('supplier_id', id);
+    if (bonsRec?.length) {
+      await supabase.from('bon_reception_lines').delete().in('br_id', bonsRec.map((b: any) => b.id));
+    }
+    await supabase.from('bons_reception').delete().eq('supplier_id', id);
+
+    // other references
+    await supabase.from('debts').delete().eq('supplier_id', id);
+    await supabase.from('transactions').delete().eq('supplier_id', id);
+    await supabase.from('appointments').delete().eq('entity_id', id).eq('entity_type', 'supplier');
+
+    // finally delete the supplier itself
+    const { error } = await supabase.from('suppliers').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+
+    setSuppliers(prev => prev.filter(s => s.id !== id));
   };
 
   // ── DEBTS ──
