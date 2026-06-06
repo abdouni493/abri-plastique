@@ -299,7 +299,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (catRes.data) setCategories(catRes.data.map((c: any) => c.name));
       if (timbreRes?.data) setTimbres(timbreRes.data.map(mapTimbre));
     } catch (err) {
-      console.error('Error loading data:', err);
+      const isNetworkError = err instanceof TypeError && (err as TypeError).message === 'Failed to fetch';
+      if (isNetworkError) {
+        console.warn('[App] Supabase unreachable — running in offline mode. Go to app.supabase.com to reactivate your project.');
+      } else {
+        console.error('Error loading data:', err);
+      }
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -311,6 +316,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const { data, error } = await supabase.from('company_settings').select('*').maybeSingle();
       if (error) {
+        const isNetworkError = error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError');
+        if (isNetworkError) {
+          console.warn('[Settings] Supabase unreachable — check that your project is active at app.supabase.com');
+          return;
+        }
         console.warn(`[Settings] Attempt ${retryCount + 1} failed:`, error.message);
         if (retryCount < 2) {
           setTimeout(() => loadSettings(retryCount + 1), 2000);
@@ -338,6 +348,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     } catch (err) {
+      const isNetworkError = err instanceof TypeError && (err.message === 'Failed to fetch' || err.message.includes('NetworkError'));
+      if (isNetworkError) {
+        console.warn('[Settings] Supabase unreachable — check that your project is active at app.supabase.com');
+        return;
+      }
       console.error('Error loading settings:', err);
       if (retryCount < 2) {
         setTimeout(() => loadSettings(retryCount + 1), 2000);
